@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "sap-business-objects": {
+      "command": "uv",
+      "args": ["run", "python", "server.py"],
+      "env": {}
+    }
+  }
+}

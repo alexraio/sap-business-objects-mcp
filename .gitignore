@@ -8,3 +8,12 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables & secrets
+.env
+*.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+

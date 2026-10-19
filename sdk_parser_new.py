@@ -46,8 +46,9 @@ class BOESDKParser:
         >>> print(universes)
     """
 
-    def __init__(self, protocol='http', host='ora-rhel-01.pf.box', 
+    def __init__(self, protocol='http', host='ora-rhel-01.lab.pf.box', 
                  port='8080', content_type='application/json'):
+
         """
         Initializes the BOESDKParser with server details and creates a session.
         """

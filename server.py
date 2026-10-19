@@ -5,8 +5,11 @@ import os
 from dotenv import load_dotenv
 from urllib.parse import urlparse
 
-# Load environment variables
-load_dotenv()
+from pathlib import Path
+
+# Load environment variables (from script directory)
+load_dotenv(Path(__file__).parent / ".env")
+
 
 # Initialize the server
 mcp = FastMCP("SAP Business Objects")
