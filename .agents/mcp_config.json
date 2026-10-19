@@ -2,7 +2,13 @@
   "mcpServers": {
     "sap-business-objects": {
       "command": "uv",
-      "args": ["run", "python", "server.py"],
+      "args": [
+        "--directory",
+        "/Users/alessio/Insync/ballarin.alessio@gmail.com/GoogleDrive/programming/Python/MCP/BO_MCP",
+        "run",
+        "python",
+        "server.py"
+      ],
       "env": {}
     }
   }
