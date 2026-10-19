@@ -3,6 +3,8 @@ name = "bo-mcp"
 version = "0.1.0"
 description = "SAP BusinessObjects BI Platform 4.3 SP5 FastMCP Server"
 readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Alessio Ballarin" }]
 requires-python = ">=3.13"
 dependencies = [
     "annotated-types==0.7.0",

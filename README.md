@@ -4,6 +4,7 @@
 [![MCP](https://img.shields.io/badge/MCP-1.22.0-green.svg)](https://modelcontextprotocol.io)
 [![Python](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Package Manager](https://img.shields.io/badge/uv-package%20manager-purple.svg)](https://astral.sh/uv)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml)
 [![SAP BO](https://img.shields.io/badge/SAP%20BusinessObjects-BI%204.3%20SP5-orange.svg)](https://www.sap.com)
 
@@ -45,6 +46,7 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [4. Claude Desktop & Other MCP Hosts](#4-claude-desktop--other-mcp-hosts)
 - [Available Scripts & Commands](#available-scripts--commands)
 - [Testing & Verification](#testing--verification)
+- [Contributing Guidelines](#contributing-guidelines)
 - [Troubleshooting](#troubleshooting)
 - [Security & Operational Best Practices](#security--operational-best-practices)
 - [Author & License](#author--license)
@@ -435,8 +437,80 @@ uv run fastmcp dev server.py
 
 ---
 
+## Testing & Verification
+
+The project includes an **offline unit test suite** powered by `pytest`, `pytest-mock`, and `pytest-cov`.
+
+### Why Offline Testing?
+Because SAP BusinessObjects Enterprise (BOE) requires a complex, proprietary on-premise installation and commercial licenses, tests are designed to execute **completely offline in < 1 second** without connecting to a live SAP server. They simulate:
+- HTTP status codes (`200`, `401 Unauthorized`, `404 Not Found`, `500 Internal Server Error`).
+- SAP BI platform specific error payloads (`WSR 00999`, invalid session tokens).
+- REST content negotiation (JSON vs. XML `Accept: text/xml` headers for query specifications).
+- Automatic and custom mapping strategies for changing Webi data sources.
+- Integrity and docstring coverage for all 46 FastMCP tools.
+
+### Running Tests Locally
+```bash
+# Run all unit tests
+uv run pytest
+
+# Run with test coverage report
+uv run pytest --cov=core --cov=services --cov=server --cov-report=term-missing
+
+# Run code style & formatting checks
+uv run ruff check .
+uv run ruff format --check .
+```
+
+---
+
+## Contributing Guidelines
+
+Contributions are welcome! Whether you are fixing bugs, adding new SAP BO REST tools, or improving documentation, we appreciate your help.
+
+For full contribution details, please read [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Quick Contribution Workflow
+
+1. **Fork & Clone**: Fork the repository on GitHub and clone your fork locally.
+2. **Environment Setup**: Install development dependencies with `uv sync --dev`.
+3. **Branching**: Create a focused feature branch off `main`:
+   ```bash
+   git checkout -b feat/your-feature-name
+   ```
+4. **Code Standards**:
+   - Follow PEP 8 and project style using `uv run ruff check --fix .` and `uv run ruff format .`.
+   - Maintain type annotations and descriptive docstrings for all `@mcp.tool()` functions.
+   - Keep domain business logic inside `services/` and transport/session logic inside `core/client.py`.
+5. **Testing**:
+   - Add offline unit tests in `tests/` using `MockBOEClient`. **Do not write tests that require a live SAP BO server.**
+   - Ensure all existing and new tests pass: `uv run pytest`.
+6. **Submit a Pull Request**: Push your branch to GitHub and open a Pull Request targeting `main`. The automated GitHub Actions CI will validate your PR against Python 3.13.
+
+---
+
+## Troubleshooting
+
+| Symptom / Error | Probable Cause | Recommended Resolution |
+| :--- | :--- | :--- |
+| `WSR 00999: Internal Server Error` | Corrupt Web Intelligence report structure or invalid REST payload syntax. | Verify document ID via `get_documents`, ensure correct query specification XML, and inspect CMS logs. |
+| `401 Unauthorized / Invalid Token` | The `X-SAP-LogonToken` has expired or credentials are invalid. | Run the `login` tool to refresh the session token. |
+| `404 Not Found` | The requested document ID, universe ID, or folder ID does not exist in the CMS. | Query the CMS via `cms_query` to confirm object existence and verify folder permissions. |
+| `Connection refused / timeout` | Network firewall or routing blocking access to the SAP BO REST port (default `6405` / `8080`). | Verify `BO_BASE_URL` in `.env` and verify connectivity using `curl -v http://<host>:<port>/biprws/infostore`. |
+
+---
+
+## Security & Operational Best Practices
+
+1. **Protect Sensitive Credentials**: Never commit `.env` files, logon tokens, or CMS credentials to source control. Use `.env.example` as a template.
+2. **Least Privilege**: Configure dedicated SAP BO service accounts with permissions restricted to the target universes, folders, and reports required for your AI workflows.
+3. **Session Hygiene**: Always log off inactive sessions using the `logout` tool or terminate orphaned sessions via `terminate_session`.
+4. **Production Safeguards**: Exercise caution when using destructive tools like `delete_webi_doc`, `delete_folder`, `purge_dp`, or `set_user_status`.
+
+---
+
 ## Author & License
 
-- **Author**: Alessio Ballarin
+- **Author**: Alessio Ballarin ([@alexraio](https://github.com/alexraio))
 - **Version**: `0.2.0` (Modular Domain Architecture)
-- **License**: Private / Internal Enterprise Use
+- **License**: [Apache License 2.0](LICENSE) - see the [LICENSE](LICENSE) file for complete terms and copyright notices.
