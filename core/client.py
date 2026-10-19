@@ -3,18 +3,18 @@ Low-level HTTP client for SAP BusinessObjects REST Web Services (biprws).
 Manages authentication, session tokens, request headers, timeouts, and error handling.
 """
 
-from typing import Optional, Dict, Any, Union
 import logging
-import requests
-import urllib3
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+import requests
+import urllib3
+
 from .exceptions import (
-    BOEError,
     BOEAuthError,
+    BOEError,
     BOENotFoundError,
     BOEProcessingError,
-    BOEQueryError,
 )
 
 # Suppress InsecureRequestWarning for internal self-signed certificates
@@ -91,7 +91,9 @@ class BOEClient:
 
         url = f"{self.bip_url}/logon/long"
         try:
-            resp = self.session.post(url, json=template, headers=self.headers, verify=self.verify_ssl, timeout=self.timeout)
+            resp = self.session.post(
+                url, json=template, headers=self.headers, verify=self.verify_ssl, timeout=self.timeout
+            )
             if resp.status_code == 200:
                 data = resp.json()
                 self.logon_token = data.get("logonToken")
@@ -197,9 +199,15 @@ class BOEClient:
 
         # Error cases
         if status == 401:
-            raise BOEAuthError("Unauthorized. The SAP BusinessObjects session token may have expired. Please login again.", status_code=401)
+            raise BOEAuthError(
+                "Unauthorized. The SAP BusinessObjects session token may have expired. Please login again.",
+                status_code=401,
+            )
         if status == 404:
-            raise BOENotFoundError(f"Resource not found at {resp.url} (it may be deleted or of a different document type).", status_code=404)
+            raise BOENotFoundError(
+                f"Resource not found at {resp.url} (it may be deleted or of a different document type).",
+                status_code=404,
+            )
         if status == 500:
             try:
                 err_data = resp.json()
@@ -208,7 +216,11 @@ class BOEClient:
                     code = err_obj.get("error_code")
                     msg = err_obj.get("message")
                     if code == "WSR 00999":
-                        raise BOEProcessingError(f"Web Intelligence Server Engine Error (WSR 00999): {msg}", status_code=500, details=err_data)
+                        raise BOEProcessingError(
+                            f"Web Intelligence Server Engine Error (WSR 00999): {msg}",
+                            status_code=500,
+                            details=err_data,
+                        )
                     raise BOEError(f"SAP BO Server Error [{code}]: {msg}", status_code=500, details=err_data)
             except (ValueError, AttributeError):
                 pass

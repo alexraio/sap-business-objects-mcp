@@ -4,10 +4,11 @@ Handles document lifecycle, prompt parameters, LOVs, refresh execution,
 tabular data extraction from report blocks, data provider SQL, and formulas.
 """
 
-from typing import List, Dict, Any, Optional, Union
 import logging
+from typing import Any, Dict, List, Optional, Union
+
 from core.client import BOEClient
-from core.exceptions import BOEError, BOEProcessingError
+from core.exceptions import BOEError
 
 logger = logging.getLogger("WebiService")
 
@@ -34,13 +35,15 @@ class WebiService:
             if isinstance(raw_docs, dict):
                 raw_docs = [raw_docs]
             for doc in raw_docs:
-                docs.append({
-                    "id": str(doc.get("id", "")),
-                    "cuid": str(doc.get("cuid", "")),
-                    "name": str(doc.get("name", "")),
-                    "folderId": str(doc.get("folderId", "")),
-                    "updated": str(doc.get("updated", "")),
-                })
+                docs.append(
+                    {
+                        "id": str(doc.get("id", "")),
+                        "cuid": str(doc.get("cuid", "")),
+                        "name": str(doc.get("name", "")),
+                        "folderId": str(doc.get("folderId", "")),
+                        "updated": str(doc.get("updated", "")),
+                    }
+                )
         return docs
 
     def get_doc_details(self, webi_doc_id: str) -> Dict[str, Any]:
@@ -71,7 +74,9 @@ class WebiService:
             return resp["properties"]
         return {"raw": resp}
 
-    def save_webi_doc(self, webi_doc_id: str, webi_doc_name: Optional[str] = None, folder_id: Optional[int] = None) -> str:
+    def save_webi_doc(
+        self, webi_doc_id: str, webi_doc_name: Optional[str] = None, folder_id: Optional[int] = None
+    ) -> str:
         """
         Saves a Webi document in place, or saves it with a new name/folder (Save As).
         If webi_doc_name is omitted, saves changes in place via PUT.
@@ -134,7 +139,9 @@ class WebiService:
 
         return parameters
 
-    def get_parameter_lov(self, webi_doc_id: str, parameter_id: Union[int, str], page: int = 1, pagesize: int = 100) -> List[Any]:
+    def get_parameter_lov(
+        self, webi_doc_id: str, parameter_id: Union[int, str], page: int = 1, pagesize: int = 100
+    ) -> List[Any]:
         """
         Retrieves the List of Values (LOV) allowed for a specific constrained parameter.
         """
@@ -176,22 +183,16 @@ class WebiService:
                     else:
                         val_entries = [{"$": str(p_val)}]
 
-                    formatted_params.append({
-                        "id": p_id,
-                        "answer": {
-                            "values": {
-                                "value": val_entries if len(val_entries) > 1 else val_entries[0]
-                            }
+                    formatted_params.append(
+                        {
+                            "id": p_id,
+                            "answer": {"values": {"value": val_entries if len(val_entries) > 1 else val_entries[0]}},
                         }
-                    })
+                    )
             payload = {"parameters": {"parameter": formatted_params}}
 
         resp = self.client.put(url, json_data=payload if payload else None)
-        return {
-            "webi_doc_id": webi_doc_id,
-            "status": "refreshed",
-            "server_response": resp
-        }
+        return {"webi_doc_id": webi_doc_id, "status": "refreshed", "server_response": resp}
 
     # =========================================================================
     # 3. Data Providers & SQL Extraction
@@ -262,7 +263,7 @@ class WebiService:
         Refreshes a single Data Provider without refreshing the entire document.
         """
         url = f"{self.client.webi_url}/documents/{webi_doc_id}/dataproviders/{dp_id}?refresh=true"
-        resp = self.client.put(url)
+        self.client.put(url)
         return f"Successfully refreshed data provider '{dp_id}' in document {webi_doc_id}"
 
     def purge_dp(self, webi_doc_id: str, dp_id: str) -> bool:
@@ -391,17 +392,19 @@ class WebiService:
             else:
                 unmapped_count += 1
 
-            enriched_mappings.append({
-                "status": status,
-                "source_id": src_id,
-                "source_name": src_meta.get("name", src_id),
-                "source_path": src_meta.get("path", ""),
-                "source_type": src_meta.get("type", "Unknown"),
-                "target_id": tgt_id if tgt_id else None,
-                "target_name": tgt_meta.get("name", tgt_id) if tgt_id else None,
-                "target_path": tgt_meta.get("path", "") if tgt_id else None,
-                "target_type": tgt_meta.get("type", "Unknown") if tgt_id else None,
-            })
+            enriched_mappings.append(
+                {
+                    "status": status,
+                    "source_id": src_id,
+                    "source_name": src_meta.get("name", src_id),
+                    "source_path": src_meta.get("path", ""),
+                    "source_type": src_meta.get("type", "Unknown"),
+                    "target_id": tgt_id if tgt_id else None,
+                    "target_name": tgt_meta.get("name", tgt_id) if tgt_id else None,
+                    "target_path": tgt_meta.get("path", "") if tgt_id else None,
+                    "target_type": tgt_meta.get("type", "Unknown") if tgt_id else None,
+                }
+            )
 
         total = len(mappings_raw)
         success_rate = round((ok_count / total * 100), 1) if total > 0 else 0.0
@@ -480,11 +483,13 @@ class WebiService:
 
             # Append any remaining custom mappings not in proposal
             for s_id, t_id in custom_dict.items():
-                mappings.append({
-                    "@status": "Ok",
-                    "source": {"id": s_id},
-                    "target": {"id": t_id},
-                })
+                mappings.append(
+                    {
+                        "@status": "Ok",
+                        "source": {"id": s_id},
+                        "target": {"id": t_id},
+                    }
+                )
 
         # Step 3: POST to mappings endpoint
         post_url = (
@@ -531,11 +536,13 @@ class WebiService:
             if isinstance(raw_reports, dict):
                 raw_reports = [raw_reports]
             for r in raw_reports:
-                reports.append({
-                    "id": str(r.get("id", "")),
-                    "name": str(r.get("name", "")),
-                    "showWhenEmpty": r.get("showWhenEmpty", True),
-                })
+                reports.append(
+                    {
+                        "id": str(r.get("id", "")),
+                        "name": str(r.get("name", "")),
+                        "showWhenEmpty": r.get("showWhenEmpty", True),
+                    }
+                )
         return reports
 
     def get_report_elements(self, webi_doc_id: str, report_id: str) -> List[Dict[str, Any]]:
@@ -550,11 +557,13 @@ class WebiService:
             if isinstance(raw_elems, dict):
                 raw_elems = [raw_elems]
             for el in raw_elems:
-                elements.append({
-                    "id": str(el.get("id", "")),
-                    "name": str(el.get("name", "")),
-                    "type": str(el.get("@type", el.get("type", ""))),
-                })
+                elements.append(
+                    {
+                        "id": str(el.get("id", "")),
+                        "name": str(el.get("name", "")),
+                        "type": str(el.get("@type", el.get("type", ""))),
+                    }
+                )
         return elements
 
     def get_report_element_data(
@@ -579,9 +588,8 @@ class WebiService:
                 "total_rows_returned": 0,
                 "columns": [],
                 "data": [],
-                "note": f"Element {element_id} does not expose a tabular dataset (it may be a layout cell, PageZone, or chart without table data): {str(e)}"
+                "note": f"Element {element_id} does not expose a tabular dataset (it may be a layout cell, PageZone, or chart without table data): {str(e)}",
             }
-
 
         if not isinstance(resp, dict):
             return {"raw_data": str(resp)}
@@ -612,7 +620,7 @@ class WebiService:
                 row_dict: Dict[str, Any] = {}
                 for c_idx, cell in enumerate(cell_vals):
                     val = cell.get("$") if isinstance(cell, dict) else str(cell)
-                    col_name = headers[c_idx] if c_idx < len(headers) else f"Column_{c_idx+1}"
+                    col_name = headers[c_idx] if c_idx < len(headers) else f"Column_{c_idx + 1}"
                     row_dict[col_name] = val
                 rows_data.append(row_dict)
 
@@ -641,26 +649,24 @@ class WebiService:
             if isinstance(raw_vars, dict):
                 raw_vars = [raw_vars]
             for v in raw_vars:
-                variables.append({
-                    "id": str(v.get("id", "")),
-                    "name": str(v.get("name", "")),
-                    "qualification": str(v.get("qualification", "")),
-                    "formula": str(v.get("formula", "")),
-                })
+                variables.append(
+                    {
+                        "id": str(v.get("id", "")),
+                        "name": str(v.get("name", "")),
+                        "qualification": str(v.get("qualification", "")),
+                        "formula": str(v.get("formula", "")),
+                    }
+                )
         return variables
 
-    def create_variable(self, webi_doc_id: str, name: str, formula: str, qualification: str = "Dimension") -> Dict[str, Any]:
+    def create_variable(
+        self, webi_doc_id: str, name: str, formula: str, qualification: str = "Dimension"
+    ) -> Dict[str, Any]:
         """
         Creates a new calculated variable / formula in a Webi document.
         """
         url = f"{self.client.webi_url}/documents/{webi_doc_id}/variables"
-        payload = {
-            "variable": {
-                "name": name,
-                "formula": formula,
-                "qualification": qualification
-            }
-        }
+        payload = {"variable": {"name": name, "formula": formula, "qualification": qualification}}
         return self.client.post(url, json_data=payload)
 
     def delete_variable(self, webi_doc_id: str, variable_id: str) -> bool:
@@ -683,10 +689,12 @@ class WebiService:
             if isinstance(raw_c, dict):
                 raw_c = [raw_c]
             for c in raw_c:
-                comments.append({
-                    "id": str(c.get("id", "")),
-                    "author": str(c.get("author", "")),
-                    "created": str(c.get("created", "")),
-                    "content": str(c.get("content", "")),
-                })
+                comments.append(
+                    {
+                        "id": str(c.get("id", "")),
+                        "author": str(c.get("author", "")),
+                        "created": str(c.get("created", "")),
+                        "content": str(c.get("content", "")),
+                    }
+                )
         return comments

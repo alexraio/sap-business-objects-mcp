@@ -4,6 +4,7 @@
 [![MCP](https://img.shields.io/badge/MCP-1.22.0-green.svg)](https://modelcontextprotocol.io)
 [![Python](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Package Manager](https://img.shields.io/badge/uv-package%20manager-purple.svg)](https://astral.sh/uv)
+[![CI](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml)
 [![SAP BO](https://img.shields.io/badge/SAP%20BusinessObjects-BI%204.3%20SP5-orange.svg)](https://www.sap.com)
 
 A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 46 specialized enterprise tools directly from natural language prompts.
@@ -425,8 +426,10 @@ uv run fastmcp dev server.py
 
 | Command | Purpose |
 | :--- | :--- |
-| `uv sync` | Install or update dependencies from `uv.lock` |
-| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 44 tools) |
+| `uv sync --dev` | Install all dependencies including testing and linting tools |
+| `uv run pytest` | Run offline unit test suite with coverage report (45 tests) |
+| `uv run ruff check .` | Run fast linting and style validation |
+| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 46 tools) |
 | `uv run fastmcp dev server.py` | Launch interactive web inspector for live debugging |
 | `uv run python server.py` | Run the MCP server in STDIO mode |
 

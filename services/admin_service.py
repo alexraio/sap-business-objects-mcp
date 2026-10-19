@@ -3,8 +3,9 @@ Administration, Security, and CMS Query Service for SAP BusinessObjects 4.3 SP5.
 Provides generic CMS SQL queries, User/Group management, and active session monitoring.
 """
 
-from typing import List, Dict, Any, Optional
 import logging
+from typing import Any, Dict, List
+
 from core.client import BOEClient
 from core.exceptions import BOEError, BOEQueryError
 
@@ -25,7 +26,7 @@ class AdminService:
         """
         Executes an arbitrary SQL-like query against the CMS repository tables
         (CI_INFOOBJECTS, CI_APPOBJECTS, CI_SYSTEMOBJECTS).
-        
+
         Example queries:
           - SELECT SI_ID, SI_NAME, SI_KIND FROM CI_INFOOBJECTS WHERE SI_KIND = 'Webi'
           - SELECT SI_ID, SI_NAME, SI_LASTLOGONTIME FROM CI_SYSTEMOBJECTS WHERE SI_KIND = 'User'
@@ -62,14 +63,16 @@ class AdminService:
         users: List[Dict[str, Any]] = []
 
         for entry in res.get("entries", []):
-            users.append({
-                "id": str(entry.get("SI_ID", "")),
-                "username": str(entry.get("SI_NAME", "")),
-                "description": str(entry.get("SI_DESCRIPTION", "")),
-                "email": str(entry.get("SI_EMAIL_ADDRESS", "")),
-                "disabled": bool(entry.get("SI_ACCOUNT_DISABLED", False)),
-                "last_logon": str(entry.get("SI_LASTLOGONTIME", "")),
-            })
+            users.append(
+                {
+                    "id": str(entry.get("SI_ID", "")),
+                    "username": str(entry.get("SI_NAME", "")),
+                    "description": str(entry.get("SI_DESCRIPTION", "")),
+                    "email": str(entry.get("SI_EMAIL_ADDRESS", "")),
+                    "disabled": bool(entry.get("SI_ACCOUNT_DISABLED", False)),
+                    "last_logon": str(entry.get("SI_LASTLOGONTIME", "")),
+                }
+            )
         return users
 
     def get_user_details(self, user_id: str) -> Dict[str, Any]:
@@ -89,11 +92,7 @@ class AdminService:
         """
         url = f"{self.client.bip_url}/v1/users/{user_id}"
         # SAP BO REST API allows updating user profile via PUT
-        payload = {
-            "entry": {
-                "accountDisabled": disabled
-            }
-        }
+        payload = {"entry": {"accountDisabled": disabled}}
         try:
             self.client.put(url, json_data=payload)
             action = "disabled" if disabled else "enabled"
@@ -120,12 +119,14 @@ class AdminService:
         for entry in res.get("entries", []):
             members_data = entry.get("SI_GROUP_MEMBERS", {})
             member_count = members_data.get("SI_TOTAL", 0) if isinstance(members_data, dict) else 0
-            groups.append({
-                "id": str(entry.get("SI_ID", "")),
-                "name": str(entry.get("SI_NAME", "")),
-                "description": str(entry.get("SI_DESCRIPTION", "")),
-                "members_count": member_count,
-            })
+            groups.append(
+                {
+                    "id": str(entry.get("SI_ID", "")),
+                    "name": str(entry.get("SI_NAME", "")),
+                    "description": str(entry.get("SI_DESCRIPTION", "")),
+                    "members_count": member_count,
+                }
+            )
         return groups
 
     def get_group_users(self, group_id: str) -> List[Dict[str, str]]:
@@ -139,11 +140,13 @@ class AdminService:
         res = self.cms_query(query, page=1, pagesize=1000)
         users: List[Dict[str, str]] = []
         for entry in res.get("entries", []):
-            users.append({
-                "id": str(entry.get("SI_ID", "")),
-                "username": str(entry.get("SI_NAME", "")),
-                "description": str(entry.get("SI_DESCRIPTION", "")),
-            })
+            users.append(
+                {
+                    "id": str(entry.get("SI_ID", "")),
+                    "username": str(entry.get("SI_NAME", "")),
+                    "description": str(entry.get("SI_DESCRIPTION", "")),
+                }
+            )
         return users
 
     # =========================================================================
@@ -162,13 +165,15 @@ class AdminService:
         sessions: List[Dict[str, Any]] = []
 
         for entry in res.get("entries", []):
-            sessions.append({
-                "connection_id": str(entry.get("SI_ID", "")),
-                "user_name": str(entry.get("SI_AUTHEN_USER_NAME") or entry.get("SI_NAME", "")),
-                "created_at": str(entry.get("SI_CREATION_TIME", "")),
-                "last_active": str(entry.get("SI_LASTLOGONTIME", "")),
-                "client_type": str(entry.get("SI_CLIENT_TYPE", "")),
-            })
+            sessions.append(
+                {
+                    "connection_id": str(entry.get("SI_ID", "")),
+                    "user_name": str(entry.get("SI_AUTHEN_USER_NAME") or entry.get("SI_NAME", "")),
+                    "created_at": str(entry.get("SI_CREATION_TIME", "")),
+                    "last_active": str(entry.get("SI_LASTLOGONTIME", "")),
+                    "client_type": str(entry.get("SI_CLIENT_TYPE", "")),
+                }
+            )
         return sessions
 
     def terminate_session(self, session_id: str) -> str:

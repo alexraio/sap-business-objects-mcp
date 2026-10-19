@@ -3,7 +3,8 @@ Universe and Semantic Layer service for SAP BusinessObjects 4.3 SP5.
 Handles universe discovery, semantic hierarchy traversal, and report-universe lineage.
 """
 
-from typing import List, Dict, Any, Tuple, Optional
+from typing import Any, Dict, List, Optional
+
 from core.client import BOEClient
 from core.exceptions import BOEError
 

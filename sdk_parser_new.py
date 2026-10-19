@@ -1,4 +1,4 @@
-'''
+"""
 ------------------------------------------------------
 NAME:        BOESDKParser
 DESCRIPTION: Unified Facade to manage connections to SAP BusinessObjects 4.3 SP5
@@ -7,24 +7,19 @@ DESCRIPTION: Unified Facade to manage connections to SAP BusinessObjects 4.3 SP5
 AUTHOR:      Ballarin, Alessio
 VERSION:     0.2 (Modular Domain Architecture)
 ------------------------------------------------------
-'''
+"""
 
-from typing import List, Dict, Optional, Any, Tuple, Union
-import logging
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from core.client import BOEClient
 from core.exceptions import (
-    BOEError,
-    BOEAuthError,
-    BOENotFoundError,
     BOEProcessingError,
-    BOEQueryError,
 )
-from services.webi_service import WebiService
-from services.universe_service import UniverseService
-from services.schedule_service import ScheduleService
 from services.admin_service import AdminService
 from services.infostore_service import InfostoreService
+from services.schedule_service import ScheduleService
+from services.universe_service import UniverseService
+from services.webi_service import WebiService
 
 
 class BOESDKParser:
@@ -35,10 +30,10 @@ class BOESDKParser:
 
     def __init__(
         self,
-        protocol: str = 'http',
-        host: str = 'localhost',
-        port: str = '8080',
-        content_type: str = 'application/json',
+        protocol: str = "http",
+        host: str = "localhost",
+        port: str = "8080",
+        content_type: str = "application/json",
         base_url: Optional[str] = None,
         timeout: int = 120,
     ):
@@ -98,7 +93,7 @@ class BOESDKParser:
         """Authenticates with username and password, storing logonToken."""
         return self.client.set_logon_token(username, password)
 
-    def set_trusted_token(self, username: str = 'Administrator') -> str:
+    def set_trusted_token(self, username: str = "Administrator") -> str:
         """Authenticates using trusted principal token."""
         return self.client.set_trusted_token(username)
 
@@ -114,10 +109,7 @@ class BOESDKParser:
         """Retrieves list of all universes (id, name, folderId)."""
         # Kept matching old key names {'u_id', 'u_name', 'u_folderid'} for backward compatibility
         res = self.universe.get_universes()
-        return [
-            {'u_id': u['id'], 'u_name': u['name'], 'u_folderid': u['folderId']}
-            for u in res
-        ]
+        return [{"u_id": u["id"], "u_name": u["name"], "u_folderid": u["folderId"]} for u in res]
 
     def get_univ_details(self, universe_id: str) -> Dict[str, str]:
         """Retrieves details of a universe (u_type, u_name, u_cuid)."""
@@ -179,13 +171,15 @@ class BOESDKParser:
         """Gets document status with WSR 00999 trapping."""
         try:
             details = self.webi.get_doc_details(webi_doc_id)
-            return {'webi_doc_state': details['webi_doc_state']}
+            return {"webi_doc_state": details["webi_doc_state"]}
         except BOEProcessingError:
             return "WSR 00999"
         except Exception:
             return None
 
-    def save_webi_doc(self, webi_doc_id: str, webi_doc_name: Optional[str] = None, folder_id: Optional[int] = None) -> str:
+    def save_webi_doc(
+        self, webi_doc_id: str, webi_doc_name: Optional[str] = None, folder_id: Optional[int] = None
+    ) -> str:
         """Saves a Webi document in place, or saves it with a new name/folder (Save As)."""
         return self.webi.save_webi_doc(webi_doc_id, webi_doc_name=webi_doc_name, folder_id=folder_id)
 
@@ -216,7 +210,9 @@ class BOESDKParser:
         """Lists blocks/tables in a report tab."""
         return self.webi.get_report_elements(webi_doc_id, report_id)
 
-    def get_report_element_data(self, webi_doc_id: str, report_id: str, element_id: str, max_rows: int = 1000) -> Dict[str, Any]:
+    def get_report_element_data(
+        self, webi_doc_id: str, report_id: str, element_id: str, max_rows: int = 1000
+    ) -> Dict[str, Any]:
         """Extracts tabular cell data from a table/chart block."""
         return self.webi.get_report_element_data(webi_doc_id, report_id, element_id, max_rows=max_rows)
 

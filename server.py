@@ -1,9 +1,11 @@
-from fastmcp import FastMCP
-from sdk_parser_new import BOESDKParser
-from typing import List, Dict, Optional, Any, Union
 import os
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from dotenv import load_dotenv
+from fastmcp import FastMCP
+
+from sdk_parser_new import BOESDKParser
 
 # Load environment variables relative to this script directory
 load_dotenv(Path(__file__).parent / ".env")
@@ -23,6 +25,7 @@ parser = BOESDKParser(base_url=api_url) if api_url else BOESDKParser()
 # =============================================================================
 # 1. Authentication Tools
 # =============================================================================
+
 
 @mcp.tool()
 def login(username: Optional[str] = None, password: Optional[str] = None) -> str:
@@ -59,6 +62,7 @@ def logout() -> str:
 # =============================================================================
 # 2. Semantic Layer & Universes
 # =============================================================================
+
 
 @mcp.tool()
 def get_universes() -> List[Dict[str, str]]:
@@ -136,6 +140,7 @@ def get_universe_connection_id(universe_id: str) -> Optional[str]:
 # 3. Web Intelligence Documents & Lifecycle
 # =============================================================================
 
+
 @mcp.tool()
 def get_documents(page: int = 1, pagesize: int = 50) -> List[Dict[str, Any]]:
     """
@@ -200,6 +205,7 @@ def delete_webi_doc(webi_doc_id: str) -> str:
 # 4. Webi Prompts, Parameters & Refresh
 # =============================================================================
 
+
 @mcp.tool()
 def get_doc_parameters(webi_doc_id: str) -> List[Dict[str, Any]]:
     """
@@ -238,6 +244,7 @@ def refresh_webi_doc(webi_doc_id: str, parameters: Optional[List[Dict[str, Any]]
 # =============================================================================
 # 5. Webi Tabs, Blocks & Tabular Data Extraction
 # =============================================================================
+
 
 @mcp.tool()
 def get_reports(webi_doc_id: str) -> List[Dict[str, Any]]:
@@ -304,6 +311,7 @@ def get_comments(webi_doc_id: str) -> List[Dict[str, Any]]:
 # =============================================================================
 # 6. Data Providers & SQL
 # =============================================================================
+
 
 @mcp.tool()
 def get_dp(webi_doc_id: str) -> List[str]:
@@ -447,6 +455,7 @@ def change_dp_datasource(
 # 7. Central Management Server (CMS) Administration & Queries
 # =============================================================================
 
+
 @mcp.tool()
 def cms_query(query: str, page: int = 1, pagesize: int = 1000) -> Dict[str, Any]:
     """
@@ -543,6 +552,7 @@ def terminate_session(session_id: str) -> str:
 # 8. Schedules & Instances Monitoring
 # =============================================================================
 
+
 @mcp.tool()
 def get_doc_schedules(webi_doc_id: str) -> List[Dict[str, Any]]:
     """
@@ -595,6 +605,7 @@ def delete_instance(instance_id: str) -> str:
 # =============================================================================
 # 9. InfoStore & Folders
 # =============================================================================
+
 
 @mcp.tool()
 def get_folders(folder_id: str) -> List[str]:

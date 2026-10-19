@@ -3,7 +3,8 @@ InfoStore and Repository service for SAP BusinessObjects 4.3 SP5.
 Handles hierarchical folder structures, corporate categories, and folder CRUD operations.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from core.client import BOEClient
 from core.exceptions import BOEError
 
@@ -60,13 +61,7 @@ class InfostoreService:
         Creates a new folder under the specified parent folder ID.
         """
         url = f"{self.client.bip_url}/infostore/{parent_folder_id}/children"
-        payload = {
-            "entry": {
-                "name": name,
-                "description": description or "",
-                "type": "Folder"
-            }
-        }
+        payload = {"entry": {"name": name, "description": description or "", "type": "Folder"}}
         resp = self.client.post(url, json_data=payload)
         return resp
 
@@ -102,9 +97,11 @@ class InfostoreService:
         categories: List[Dict[str, str]] = []
         if isinstance(resp, dict) and resp.get("entries"):
             for entry in resp["entries"]:
-                categories.append({
-                    "id": str(entry.get("SI_ID", "")),
-                    "name": str(entry.get("SI_NAME", "")),
-                    "cuid": str(entry.get("SI_CUID", "")),
-                })
+                categories.append(
+                    {
+                        "id": str(entry.get("SI_ID", "")),
+                        "name": str(entry.get("SI_NAME", "")),
+                        "cuid": str(entry.get("SI_CUID", "")),
+                    }
+                )
         return categories

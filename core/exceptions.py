@@ -2,11 +2,12 @@
 Custom exceptions for SAP BusinessObjects BI Platform SDK and MCP tools.
 """
 
-from typing import Optional, Any
+from typing import Any, Optional
 
 
 class BOEError(Exception):
     """Base exception for all SAP BusinessObjects errors."""
+
     def __init__(self, message: str, status_code: Optional[int] = None, details: Optional[Any] = None):
         super().__init__(message)
         self.message = message
@@ -21,19 +22,23 @@ class BOEError(Exception):
 
 class BOEAuthError(BOEError):
     """Raised when authentication, logon token acquisition, or session validation fails."""
+
     pass
 
 
 class BOENotFoundError(BOEError):
     """Raised when a requested resource (document, universe, folder, user) is not found (HTTP 404)."""
+
     pass
 
 
 class BOEProcessingError(BOEError):
     """Raised when the Web Intelligence Processing Server or Raylight encounters an engine failure (e.g. WSR 00999)."""
+
     pass
 
 
 class BOEQueryError(BOEError):
     """Raised when a CMS SQL query fails to execute or syntax is invalid."""
+
     pass

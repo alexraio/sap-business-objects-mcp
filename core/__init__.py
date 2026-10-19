@@ -3,8 +3,8 @@ Core networking, authentication, and exception handling for SAP BusinessObjects.
 """
 
 from .exceptions import (
-    BOEError,
     BOEAuthError,
+    BOEError,
     BOENotFoundError,
     BOEProcessingError,
     BOEQueryError,

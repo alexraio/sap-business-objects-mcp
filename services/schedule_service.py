@@ -3,8 +3,9 @@ Schedule and Instance Monitoring Service for SAP BusinessObjects 4.3 SP5.
 Handles scheduled executions, report instance histories, and execution failure diagnostics.
 """
 
-from typing import List, Dict, Any, Optional
 import logging
+from typing import Any, Dict, List
+
 from core.client import BOEClient
 from core.exceptions import BOEError
 
@@ -39,11 +40,13 @@ class ScheduleService:
                 if isinstance(raw_sched, dict):
                     raw_sched = [raw_sched]
                 for s in raw_sched:
-                    schedules.append({
-                        "id": str(s.get("id", "")),
-                        "name": str(s.get("name", "")),
-                        "status": str(s.get("status", "")),
-                    })
+                    schedules.append(
+                        {
+                            "id": str(s.get("id", "")),
+                            "name": str(s.get("name", "")),
+                            "status": str(s.get("status", "")),
+                        }
+                    )
             return schedules
         except Exception:
             return []
@@ -65,15 +68,17 @@ class ScheduleService:
             for entry in resp["entries"]:
                 status_code = entry.get("SI_SCHEDULE_STATUS", -1)
                 status_str = self.STATUS_MAP.get(status_code, f"Status_{status_code}")
-                instances.append({
-                    "instance_id": str(entry.get("SI_ID", "")),
-                    "name": str(entry.get("SI_NAME", "")),
-                    "start_time": str(entry.get("SI_STARTTIME", "")),
-                    "end_time": str(entry.get("SI_ENDTIME", "")),
-                    "status_code": status_code,
-                    "status": status_str,
-                    "status_info": str(entry.get("SI_STATUSINFO", "")),
-                })
+                instances.append(
+                    {
+                        "instance_id": str(entry.get("SI_ID", "")),
+                        "name": str(entry.get("SI_NAME", "")),
+                        "start_time": str(entry.get("SI_STARTTIME", "")),
+                        "end_time": str(entry.get("SI_ENDTIME", "")),
+                        "status_code": status_code,
+                        "status": status_str,
+                        "status_info": str(entry.get("SI_STATUSINFO", "")),
+                    }
+                )
         return instances
 
     def get_instance_details(self, instance_id: str) -> Dict[str, Any]:
