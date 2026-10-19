@@ -36,7 +36,7 @@ class BOESDKParser:
     def __init__(
         self,
         protocol: str = 'http',
-        host: str = 'ora-rhel-01.lab.pf.box',
+        host: str = 'localhost',
         port: str = '8080',
         content_type: str = 'application/json',
         base_url: Optional[str] = None,

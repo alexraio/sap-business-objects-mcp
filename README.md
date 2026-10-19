@@ -112,7 +112,7 @@ Configure your SAP BusinessObjects server URL and credentials in `.env`:
 
 ```env
 # SAP BusinessObjects REST API Configuration (BI 4.3 SP5)
-SAP_BO_REST_API_URL="http://ora-rhel-01.lab.pf.box:8080/biprws"
+SAP_BO_REST_API_URL="http://your-bo-host:8080/biprws"
 
 # Authentication Credentials
 SAP_BO_USERNAME="Administrator"
@@ -348,7 +348,7 @@ When migrating reports from UNV to UNX or repointing between universes, the SAP 
 
 | Variable | Required? | Default | Description | Example |
 | :--- | :---: | :---: | :--- | :--- |
-| `SAP_BO_REST_API_URL` | **Yes** | `http://ora-rhel-01.lab.pf.box:8080/biprws` | URL to SAP BI Platform REST Web Services (`biprws`) | `http://boserver.corp:8080/biprws` |
+| `SAP_BO_REST_API_URL` | **Yes** | `None` | URL to SAP BI Platform REST Web Services (`biprws`) | `http://boserver.corp:8080/biprws` |
 | `SAP_BO_USERNAME` | Optional | `None` | Default username for the `login` tool | `Administrator` |
 | `SAP_BO_PASSWORD` | Optional | `None` | Default password for the `login` tool | `SecretP@ssw0rd` |
 
@@ -358,8 +358,8 @@ When migrating reports from UNV to UNX or repointing between universes, the SAP 
 
 ### 1. Google Antigravity IDE
 
-#### Workspace Configuration (Automatic)
-The repository includes [`.agents/mcp_config.json`](file:///.agents/mcp_config.json). When you open this folder in Antigravity IDE, all 44 tools are registered automatically:
+#### Workspace Configuration
+Create a `.agents/mcp_config.json` file in your workspace (see [`mcp_config.example.json`](file:///mcp_config.example.json)). When you open this folder in Antigravity IDE, all 46 tools are registered automatically:
 
 ```json
 {
@@ -392,7 +392,7 @@ Add the server to `~/.gemini/config/mcp_config.json`:
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/alessio/Insync/ballarin.alessio@gmail.com/GoogleDrive/programming/Python/MCP/BO_MCP",
+        "/path/to/BO_MCP",
         "run",
         "python",
         "server.py"

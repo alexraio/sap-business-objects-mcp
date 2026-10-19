@@ -33,7 +33,7 @@ class BOEClient:
         self,
         base_url: Optional[str] = None,
         protocol: str = "http",
-        host: str = "ora-rhel-01.lab.pf.box",
+        host: str = "localhost",
         port: str = "8080",
         content_type: str = "application/json",
         timeout: int = 120,

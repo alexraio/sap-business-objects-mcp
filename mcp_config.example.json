@@ -4,7 +4,7 @@
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/alessio/Insync/ballarin.alessio@gmail.com/GoogleDrive/programming/Python/MCP/BO_MCP",
+        "/path/to/BO_MCP",
         "run",
         "python",
         "server.py"

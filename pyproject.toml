@@ -1,7 +1,7 @@
 [project]
 name = "bo-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "SAP BusinessObjects BI Platform 4.3 SP5 FastMCP Server"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
