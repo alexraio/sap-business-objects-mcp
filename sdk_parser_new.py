@@ -1,491 +1,315 @@
 '''
 ------------------------------------------------------
-
-NAME:        
-DESCRIPTION: Class to manage the connection to the Business Objects platform and perform operations on Webi documents.
+NAME:        BOESDKParser
+DESCRIPTION: Unified Facade to manage connections to SAP BusinessObjects 4.3 SP5
+             and orchestrate Web Intelligence, Semantic Layer, CMS Admin,
+             and InfoStore domain services.
 AUTHOR:      Ballarin, Alessio
-VERSION:     0.1
-CREATED ON:  
-CHANGED AT:  
-CHANGES:     
-0.1 -  - Initial version - Alessio Ballarin
-
+VERSION:     0.2 (Modular Domain Architecture)
 ------------------------------------------------------
 '''
 
-import requests
-import json
+from typing import List, Dict, Optional, Any, Tuple, Union
 import logging
-import os
-import datetime
+
+from core.client import BOEClient
+from core.exceptions import (
+    BOEError,
+    BOEAuthError,
+    BOENotFoundError,
+    BOEProcessingError,
+    BOEQueryError,
+)
+from services.webi_service import WebiService
+from services.universe_service import UniverseService
+from services.schedule_service import ScheduleService
+from services.admin_service import AdminService
+from services.infostore_service import InfostoreService
 
 
 class BOESDKParser:
     """
-    This class interacts with a Business Objects platform using its REST API.
-    It provides methods for logging in, retrieving universes, and managing 
-    Webi documents, utilizing a session object for efficient connections.
-
-    Attributes:
-        protocol (str): Protocol used for the connection (default: 'http').
-        host (str): Hostname of the Business Objects server (default: 'ora-rhel-01.pf.box').
-        port (str): Port number of the Business Objects server (default: '8080').
-        content_type (str): Content type for requests (default: 'application/json').
-        bip_url (str): Base URL for the BI platform REST API.
-        webi_url (str): URL for the Web Intelligence REST API.
-        sl_url (str): URL for the Semantic Layer REST API.
-        query_url (str): URL for the CMS query API.
-        headers (dict): Default headers for requests.
-        session (requests.Session): Session object for persistent connections.
-        logon_token (str): Logon token for authentication.
-
-    Example usage:
-        >>> parser = BOESDKParser()
-        >>> parser.set_logon_token('username', 'password')
-        >>> universes = parser.get_universes()
-        >>> print(universes)
+    Unified Facade providing access to all SAP BusinessObjects BI Platform 4.3 SP5 REST capabilities.
+    Delegates to modular domain services while maintaining 100% backward compatibility.
     """
 
-    def __init__(self, protocol='http', host='ora-rhel-01.lab.pf.box', 
-                 port='8080', content_type='application/json'):
+    def __init__(
+        self,
+        protocol: str = 'http',
+        host: str = 'ora-rhel-01.lab.pf.box',
+        port: str = '8080',
+        content_type: str = 'application/json',
+        base_url: Optional[str] = None,
+        timeout: int = 120,
+    ):
+        self.client = BOEClient(
+            base_url=base_url,
+            protocol=protocol,
+            host=host,
+            port=port,
+            content_type=content_type,
+            timeout=timeout,
+        )
 
-        """
-        Initializes the BOESDKParser with server details and creates a session.
-        """
-        base_url = f'{protocol}://{host}:{port}'
-        self.bip_url = f'{base_url}/biprws'
-        self.webi_url = f'{self.bip_url}/raylight/v1'
-        self.sl_url = f'{self.bip_url}/sl/v1'
-        self.query_url = f'{self.bip_url}/v1'
-        self.headers = {
-            'Accept': content_type,
-            'Content-Type': content_type
-        }
-        self.session = requests.Session()
-        self.logon_token = None
+        # Domain Services
+        self.webi = WebiService(self.client)
+        self.universe = UniverseService(self.client)
+        self.schedule = ScheduleService(self.client)
+        self.admin = AdminService(self.client)
+        self.infostore = InfostoreService(self.client)
 
-    def _get_auth_info(self):
-        """
-        Retrieves the login payload template for logon with user and password.
+    # =========================================================================
+    # Compatibility Properties
+    # =========================================================================
 
-        Returns:
-            requests.Response: Response object from the server.
-        """
-        url = f'{self.bip_url}/logon/long'
-        return self.session.get(url, headers=self.headers, verify=False)
+    @property
+    def bip_url(self) -> str:
+        return self.client.bip_url
 
-    def _get_trusted_token(self, username):
-        """
-        Retrieves the token with the trusted method.
+    @property
+    def webi_url(self) -> str:
+        return self.client.webi_url
 
-        Args:
-            username (str): Username for trusted authentication.
+    @property
+    def sl_url(self) -> str:
+        return self.client.sl_url
 
-        Returns:
-            requests.Response: Response object from the server.
-        """
-        url = f'{self.bip_url}/logon/trusted'
-        headers = self.headers.copy()
-        headers['X-SAP-TRUSTED-USER'] = username
-        return self.session.get(url, headers=headers, verify=False)
+    @property
+    def query_url(self) -> str:
+        return self.client.query_url
 
-    def _send_auth_info(self, username, password):
-        """
-        Retrieves a log in token using username and password.
+    @property
+    def headers(self) -> Dict[str, str]:
+        return self.client.headers
 
-        Args:
-            username (str): Username for authentication.
-            password (str): Password for authentication.
+    @property
+    def session(self):
+        return self.client.session
 
-        Returns:
-            requests.Response: Response object from the server.
-        """
-        payload = self._get_auth_info().json()
-        payload['password'] = password
-        payload['userName'] = username
-        url = f'{self.bip_url}/logon/long'
-        return self.session.post(url, json=payload, headers=self.headers, verify=False)
+    @property
+    def logon_token(self) -> Optional[str]:
+        return self.client.logon_token
 
-    def set_logon_token(self, username, password):
-        """
-        Sets the logon token in the headers for subsequent requests.
+    # =========================================================================
+    # Authentication & Session
+    # =========================================================================
 
-        Args:
-            username (str): Username for authentication.
-            password (str): Password for authentication.
+    def set_logon_token(self, username: str, password: str) -> str:
+        """Authenticates with username and password, storing logonToken."""
+        return self.client.set_logon_token(username, password)
 
-        Raises:
-            Exception: If the logon fails.
-        """
-        resp = self._send_auth_info(username, password)
-        if resp.status_code == 200:
-            resp_json = resp.json()
-            self.logon_token = resp_json['logonToken']
-            self.headers['X-SAP-LogonToken'] = self.logon_token
-            logging.info(f"Logon successful, logon token set: {self.logon_token}")
-        else:
-            logging.error(f"Logon failed: {resp.status_code} - {resp.text}")
-            raise Exception("Could not log on and set the logon token!")
-        
+    def set_trusted_token(self, username: str = 'Administrator') -> str:
+        """Authenticates using trusted principal token."""
+        return self.client.set_trusted_token(username)
 
-    def set_trusted_token(self, username='Administrator'):
-        """
-        Sets the trusted token in the headers for subsequent requests.
+    def bo_logoff(self) -> bool:
+        """Logs off and closes the session."""
+        return self.client.bo_logoff()
 
-        Args:
-            username (str): Username for trusted authentication (default: 'Administrator').
+    # =========================================================================
+    # Universes & Semantic Layer
+    # =========================================================================
 
-        Raises:
-            Exception: If the trusted logon fails.
-        """
-        resp = self._get_trusted_token(username)
-        if resp.status_code == 200:
-            resp_json = resp.json()
-            self.logon_token = resp_json['logonToken']
-            self.headers['X-SAP-LogonToken'] = self.logon_token
-        else:
-            raise Exception("Could not log on and set the logon token!")
+    def get_universes(self) -> List[Dict[str, Any]]:
+        """Retrieves list of all universes (id, name, folderId)."""
+        # Kept matching old key names {'u_id', 'u_name', 'u_folderid'} for backward compatibility
+        res = self.universe.get_universes()
+        return [
+            {'u_id': u['id'], 'u_name': u['name'], 'u_folderid': u['folderId']}
+            for u in res
+        ]
 
-    def bo_logoff(self):
-        """
-        Logs off from the Business Objects platform and closes the session.
-        """
-        url = f'{self.bip_url}/v1/logoff'
-        resp = self.session.post(url, headers=self.headers, verify=False)
-        print(f'Logoff Status Code: {resp.status_code}')
-        self.session.close()
+    def get_univ_details(self, universe_id: str) -> Dict[str, str]:
+        """Retrieves details of a universe (u_type, u_name, u_cuid)."""
+        return self.universe.get_universe_details(universe_id)
 
-    def get_universes(self):
-        """
-        Retrieves a list of universes from the server.
+    def get_universe_structure(self, universe_id: str) -> Dict[str, Any]:
+        """Retrieves full semantic layer tree of a universe."""
+        return self.universe.get_universe_structure(universe_id)
 
-        Returns:
-            list: A list of dictionaries, each containing details of a universe.
-                  Example: [{'u_id': '123', 'u_name': 'MyUniverse', 'u_folderid': '456'}]
+    def get_universe_related_reports(self, universe_id: str) -> Tuple[str, str, List[str]]:
+        """Gets reports related to a UNX or UNV universe."""
+        data = self.universe.get_universe_related_reports(universe_id)
+        return data["universe_id"], data["universe_name"], data["reports"]
 
-        Raises:
-            Exception: If the universes cannot be retrieved.
-        """
-        url = f'{self.webi_url}/universes'
-        resp = self.session.get(url, headers=self.headers, verify=False)
-        if resp.status_code == 200:
-            universes_json = resp.json()
-            return [{'u_id': u['id'], 'u_name': u['name'], 
-                     'u_folderid': u['folderId']}
-                    for u in universes_json['universes']['universe']]
-        else:
-            raise Exception("Could not retrieve universes - have you set a valid logon token?")
+    def get_univ_related_conn_id(self, universe_id: str) -> Optional[str]:
+        """Gets data connection ID for a universe."""
+        return self.universe.get_univ_related_conn_id(universe_id)
 
-    def get_universe_related_reports(self, universe_id):
-        """
-        Gets all reports related to a UNX or UNV universe.
+    # =========================================================================
+    # InfoStore & Folders
+    # =========================================================================
 
-        Args:
-            universe_id (str): ID of the universe.
+    def get_folders(self, folder_id: str, folder_list: Optional[List[str]] = None) -> List[str]:
+        """Recursively retrieves folder IDs."""
+        return self.infostore.get_folders(folder_id, recursive=True, folder_list=folder_list)
 
-        Returns:
-            tuple: A tuple containing the universe ID, universe name, and a list of related reports.
+    def get_webi_docs(self, folder_id: str, webi_list: Optional[List[str]] = None) -> List[str]:
+        """Gets all Webi document IDs in a folder."""
+        res = self.infostore.get_webi_docs(folder_id)
+        if webi_list is not None:
+            webi_list.extend(res)
+            return webi_list
+        return res
 
-        Raises:
-            ValueError: If the universe type is invalid.
-            Exception: If the reports cannot be retrieved.
-        """
-        universe_details = self.get_univ_details(universe_id)
-        universe_type = universe_details['u_type']
-        print(f"Finding all reports related to the universe type: {universe_type}")
+    def get_folder_details(self, folder_id: str) -> Dict[str, Any]:
+        """Gets folder metadata."""
+        return self.infostore.get_folder_details(folder_id)
 
-        url = f"{self.query_url}/cmsquery?page=1&pagesize=50000"
-        if universe_type == 'unx':
-            payload = {
-                "query": f"SELECT TOP 50000 SI_ID, SI_NAME, SI_SL_DOCUMENTS FROM CI_APPOBJECTS WHERE SI_KIND = 'DSL.MetaDataFile' AND SI_ID ={universe_id}"
-            }
-            report_field = 'SI_SL_DOCUMENTS'
-        elif universe_type == 'unv':
-            payload = {
-                "query": f"SELECT TOP 50000 SI_ID, SI_NAME, SI_WEBI FROM CI_APPOBJECTS WHERE SI_KIND = 'Universe' AND SI_ID = {universe_id}"
-            }
-            report_field = 'SI_WEBI'
-        else:
-            raise ValueError("Invalid universe type")
+    def get_categories(self) -> List[Dict[str, str]]:
+        """Lists corporate categories."""
+        return self.infostore.get_categories()
 
-        resp = self.session.post(url, json=payload, headers=self.headers, verify=False)
-        if resp.status_code == 200:
-            j_resp = resp.json()
-            reports = [value for key, value in j_resp['entries'][0][report_field].items() 
-                       if key != 'SI_TOTAL']
-            return j_resp['entries'][0]['SI_ID'], j_resp['entries'][0]['SI_NAME'], reports
-        else:
-            raise Exception(f"Could not retrieve reports: {resp.status_code} - {resp.text}")
+    # =========================================================================
+    # Web Intelligence Documents, Prompts, Data & Lifecycle
+    # =========================================================================
 
-    def get_univ_details(self, universe_id):
-        """
-        Retrieves details of a universe.
+    def get_documents(self, page: int = 1, pagesize: int = 50) -> List[Dict[str, Any]]:
+        """Lists Webi documents."""
+        return self.webi.get_documents(page=page, pagesize=pagesize)
 
-        Args:
-            universe_id (str): ID of the universe.
-
-        Returns:
-            dict: A dictionary containing details of the universe.
-                  Example: {'u_type': 'unx', 'u_name': 'MyUniverse', 'u_cuid': 'abc123'}
-
-        Raises:
-            Exception: If the universe details cannot be retrieved.
-        """
-        url = f"{self.webi_url}/universes/{universe_id}"
-        resp = self.session.get(url, headers=self.headers, verify=False)
-        if resp.status_code == 200:
-            univ_details_json = resp.json()
-            universe_type = univ_details_json['universe']['type'].lower()
-            return {
-                'u_type': universe_type,
-                'u_name': univ_details_json['universe']['name'],
-                'u_cuid': univ_details_json['universe']['cuid']
-            }
-        else:
-            raise Exception("Could not retrieve the universe. Check the Universe ID again")
-
-    
-    def delete_webi_doc(self, webi_doc_id):
-        """
-        Deletes a Webi document.
-
-        Args:
-            webi_doc_id (str): ID of the Webi document to delete.
-
-        Returns:
-            bool: True if the deletion is successful, False otherwise.
-        """
-        url = f"{self.webi_url}/documents/{webi_doc_id}"
+    def get_doc_details(self, webi_doc_id: str) -> Optional[Dict[str, Any]]:
+        """Gets document info (name, path, cuid, scheduled, state)."""
         try:
-            resp = self.session.delete(url, headers=self.headers, verify=False)
-            resp.raise_for_status()
-            print(f'Deleted Webi document {webi_doc_id} - Status Code: {resp.status_code}')
-            return True
-        except requests.exceptions.RequestException as e:
-            print(f"Error deleting Webi document: {e}")
-            return False
-
-
-    def get_univ_related_conn_id(self, universe_id):
-        """
-        Gets the connection ID of a universe.
-
-        Args:
-            universe_id (str): ID of the universe.
-
-        Returns:
-            str: The connection ID associated with the universe.
-
-        Raises:
-            Exception: If the connection ID cannot be retrieved.
-        """
-        url = f"{self.query_url}/cmsquery?page=1&pagesize=50000"
-        payload = {
-            "query": f"select SI_NAME, SI_SPECIFIC_KIND, SI_DATACONNECTION from ci_appobjects, ci_infoobjects where si_id={universe_id}"
-        }
-        resp = self.session.post(url, json=payload, headers=self.headers, verify=False)
-        if resp.status_code == 200:
-            return resp.json()['entries'][0]['SI_DATACONNECTION']['1']
-        else:
-            raise Exception("Could not retrieve connection ID")
-
-    def get_folders(self, folder_id, folder_list=None):
-        """
-        Gets all folders recursively starting from a root folder.
-
-        Args:
-            folder_id (str): ID of the root folder.
-            folder_list (list, optional): List to store folder IDs (default: None).
-
-        Returns:
-            list: A list of folder IDs.
-        """
-        if folder_list is None:
-            folder_list = []
-        url = f"{self.bip_url}/infostore/{folder_id}/children?type=Folder&page=1&pagesize=10000"
-        resp = self.session.get(url, headers=self.headers, verify=False)
-        if resp.status_code == 200:
-            j_resp = resp.json()
-            for entry in j_resp['entries']:
-                folder_list.append(entry['id'])
-                self.get_folders(entry['id'], folder_list)
-        return folder_list
-
-    def get_webi_docs(self, folder_id, webi_list=None):
-        """
-        Gets all Webi documents in a folder.
-
-        Args:
-            folder_id (str): ID of the folder.
-            webi_list (list, optional): List to store Webi document IDs (default: None).
-
-        Returns:
-            list: A list of Webi document IDs.
-        """
-        if webi_list is None:
-            webi_list = []
-        url = f"{self.bip_url}/infostore/{folder_id}/children?type=Webi&page=1&pagesize=10000"
-        resp = self.session.get(url, headers=self.headers, verify=False)
-        if resp.status_code == 200:
-            j_resp = resp.json()
-            for entry in j_resp['entries']:
-                webi_list.append(entry['id'])
-        return webi_list
-
-    def get_dp(self, webi_doc_id):
-        """
-        Gets all Data Providers of a Webi document.
-
-        Args:
-            webi_doc_id (str): ID of the Webi document.
-
-        Returns:
-            list: A list of Data Provider IDs.
-                  Returns an empty list if there's an error.
-        """
-        url = f"{self.webi_url}/documents/{webi_doc_id}/dataproviders"
-        try:
-            resp = self.session.get(url, headers=self.headers, verify=False)
-            resp.raise_for_status()
-            j_response = resp.json()
-            return [dp['id'] for dp in j_response['dataproviders']['dataprovider']]
-        except requests.exceptions.RequestException as e:
-            print(f"Error getting Data Providers: {e}")
-            return []
-    
-    def get_dp_details(self, webi_doc_id, dp_id):
-        """
-        Gets details of a specific Data Provider.
-
-        Args:
-            webi_doc_id (str): ID of the Webi document.
-            dp_id (str): ID of the Data Provider.
-
-        Returns:
-            dict: A dictionary containing Data Provider details.
-                  Example: {'id': 'DP0', 'dataSourceId': '809161', 'dataSourceType': 'unx', 'dataSourceName': 'eFashion'}
-                  Returns None if there's an error.
-        """
-        url = f"{self.webi_url}/documents/{webi_doc_id}/dataproviders/{dp_id}"
-        try:
-            resp = self.session.get(url, headers=self.headers, verify=False)
-            resp.raise_for_status()
-            j_response = resp.json()
-            dp_data = j_response['dataprovider']
-            return {
-                'id': dp_data['id'],
-                'dataSourceId': dp_data['dataSourceId'],
-                'dataSourceType': dp_data['dataSourceType'],
-                'dataSourceName': dp_data['dataSourceName']
-            }
-        except requests.exceptions.RequestException as e:
-            print(f"Error getting Data Provider details: {e}")
+            return self.webi.get_doc_details(webi_doc_id)
+        except Exception:
             return None
 
-    def purge_dp(self, webi_doc_id, dp_id):
-        """
-        Purges a Data Provider of a Webi Document.
-
-        Args:
-            webi_doc_id (str): ID of the Webi document.
-            dp_id (str): ID of the Data Provider.
-
-        Returns:
-            bool: True if the purge is successful, False otherwise.
-        """
-        url = f"{self.webi_url}/documents/{webi_doc_id}/dataproviders/{dp_id}?purge=true"
+    def get_doc_status(self, webi_doc_id: str) -> Optional[Union[Dict[str, str], str]]:
+        """Gets document status with WSR 00999 trapping."""
         try:
-            resp = self.session.put(url, headers=self.headers, verify=False)
-            resp.raise_for_status()
-            print(f'Purged {dp_id} from Webi report {webi_doc_id} - Status Code: {resp.status_code}')
-            return True
-        except requests.exceptions.RequestException as e:
-            print(f"Error purging Data Provider: {e}")
+            details = self.webi.get_doc_details(webi_doc_id)
+            return {'webi_doc_state': details['webi_doc_state']}
+        except BOEProcessingError:
+            return "WSR 00999"
+        except Exception:
+            return None
+
+    def save_webi_doc(self, webi_doc_id: str, webi_doc_name: str) -> None:
+        """Saves or overwrites a Webi document."""
+        self.webi.save_webi_doc(webi_doc_id, webi_doc_name)
+
+    def delete_webi_doc(self, webi_doc_id: str) -> bool:
+        """Deletes a Webi document."""
+        try:
+            return self.webi.delete_webi_doc(webi_doc_id)
+        except Exception:
             return False
 
-    def save_webi_doc(self, webi_doc_id, webi_doc_name):
-        """
-        Saves or overwrites a Webi Document preserving comments.
+    def get_doc_parameters(self, webi_doc_id: str) -> List[Dict[str, Any]]:
+        """Retrieves prompt parameters required by a document."""
+        return self.webi.get_doc_parameters(webi_doc_id)
 
-        Args:
-            webi_doc_id (str): ID of the Webi document.
-            webi_doc_name (str): Name of the Webi document.
-        """
-        url = f"{self.webi_url}/documents/{webi_doc_id}?overwrite=true&withComments=true"
-        payload = {
-            "document": {
-                "name": webi_doc_name,
-                "folderId": -1
-            }
-        }
+    def get_parameter_lov(self, webi_doc_id: str, parameter_id: Union[int, str]) -> List[Any]:
+        """Gets List of Values (LOV) for a prompt."""
+        return self.webi.get_parameter_lov(webi_doc_id, parameter_id)
+
+    def refresh_webi_doc(self, webi_doc_id: str, parameters: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """Refreshes a Webi report, answering prompts if provided."""
+        return self.webi.refresh_webi_doc(webi_doc_id, parameters)
+
+    def get_reports(self, webi_doc_id: str) -> List[Dict[str, Any]]:
+        """Lists sheets/tabs in a document."""
+        return self.webi.get_reports(webi_doc_id)
+
+    def get_report_elements(self, webi_doc_id: str, report_id: str) -> List[Dict[str, Any]]:
+        """Lists blocks/tables in a report tab."""
+        return self.webi.get_report_elements(webi_doc_id, report_id)
+
+    def get_report_element_data(self, webi_doc_id: str, report_id: str, element_id: str, max_rows: int = 1000) -> Dict[str, Any]:
+        """Extracts tabular cell data from a table/chart block."""
+        return self.webi.get_report_element_data(webi_doc_id, report_id, element_id, max_rows=max_rows)
+
+    def get_variables(self, webi_doc_id: str) -> List[Dict[str, Any]]:
+        """Lists calculated variables/formulas in a document."""
+        return self.webi.get_variables(webi_doc_id)
+
+    def get_comments(self, webi_doc_id: str) -> List[Dict[str, Any]]:
+        """Lists user comments in a document."""
+        return self.webi.get_comments(webi_doc_id)
+
+    # =========================================================================
+    # Data Providers
+    # =========================================================================
+
+    def get_dp(self, webi_doc_id: str) -> List[str]:
+        """Gets Data Provider IDs."""
+        return self.webi.get_dp(webi_doc_id)
+
+    def get_dp_details(self, webi_doc_id: str, dp_id: str) -> Optional[Dict[str, str]]:
+        """Gets details of a specific Data Provider."""
         try:
-            resp = self.session.post(url, json=payload, headers=self.headers, verify=False)
-            resp.raise_for_status()
-            print(f'Saved Webi document {webi_doc_id} - Status Code: {resp.status_code}')
-        except requests.exceptions.RequestException as e:
-            print(f"Error saving Webi document: {e}")
-
-    def get_doc_details(self, webi_doc_id):
-        """
-        Gets document information and returns it as a dictionary.
-
-        Args:
-            webi_doc_id (str): ID of the Webi document. 
-
-        Returns:
-            dict: A dictionary containing document details.
-                  Returns None if there's an error.
-        """
-        url = f"{self.webi_url}/documents/{webi_doc_id}"
-        try:
-            resp = self.session.get(url, headers=self.headers, verify=False)
-            resp.raise_for_status()
-            j_response = resp.json()
-            return {
-                'webi_doc_name': j_response['document']['name'],
-                'webi_doc_path': j_response['document']['path'],
-                'webi_doc_cuid': j_response['document']['cuid'],
-                'webi_doc_scheduled': j_response['document']['scheduled'],
-                'webi_doc_state': j_response['document']['state']
-            }
-        except requests.exceptions.RequestException as e:
-            print(f"Error getting document info: {e}")
+            return self.webi.get_dp_details(webi_doc_id, dp_id)
+        except Exception:
             return None
-            
-            
-    # @Alessio - Would be better to check for 404 status code end return 404 instead of None. 
-    # +Than I can check for 404 in the colling script. This is better because 404 tell that the document is not a webi but a crystal.
-    def get_doc_status(self, webi_doc_id):
-        """
-        Gets document status and returns it as a dictionary.
-        Checks for a specific 500 error ("WSR 00999").
 
-        Args:
-            webi_doc_id (str): ID of the Webi document.
+    def get_dp_sql(self, webi_doc_id: str, dp_id: str) -> str:
+        """Extracts generated SQL of a Data Provider."""
+        return self.webi.get_dp_sql(webi_doc_id, dp_id)
 
-        Returns:
-            dict: A dictionary containing document status.
-            str: Returns "WSR 00999" if a 500 error with that message occurs.
-            None: Returns None if there's a different error.
-        """
-        url = f"{self.webi_url}/documents/{webi_doc_id}"
+    def refresh_dp(self, webi_doc_id: str, dp_id: str) -> str:
+        """Refreshes a single Data Provider."""
+        return self.webi.refresh_dp(webi_doc_id, dp_id)
+
+    def purge_dp(self, webi_doc_id: str, dp_id: str) -> bool:
+        """Purges cached data from a Data Provider."""
         try:
-            resp = self.session.get(url, headers=self.headers, verify=False)
-            resp.raise_for_status()
-            j_response = resp.json()
-            return {
-                'webi_doc_state': j_response['document']['state']
-            }
-        except requests.exceptions.RequestException as e:
-            if resp is not None and resp.status_code == 500:
-                try:
-                    error_json = resp.json()
-                    if 'error' in error_json and 'error_code' in error_json['error'] and error_json['error']['error_code'] == "WSR 00999":
-                        return "WSR 00999"
-                except ValueError:
-                    # Handle cases where the 500 response is not valid JSON
-                    print(f"Error decoding 500 JSON response: {e}")
-                    return None
-            else:
-                print(f"Error getting document info: {e}")
-                return None    
+            return self.webi.purge_dp(webi_doc_id, dp_id)
+        except Exception:
+            return False
+
+    # =========================================================================
+    # CMS Administration & Security
+    # =========================================================================
+
+    def cms_query(self, query: str, page: int = 1, pagesize: int = 1000) -> Dict[str, Any]:
+        """Executes a CMS SQL query."""
+        return self.admin.cms_query(query, page=page, pagesize=pagesize)
+
+    def get_users(self, page: int = 1, pagesize: int = 100) -> List[Dict[str, Any]]:
+        """Lists user accounts."""
+        return self.admin.get_users(page=page, pagesize=pagesize)
+
+    def get_user_details(self, user_id: str) -> Dict[str, Any]:
+        """Gets user properties."""
+        return self.admin.get_user_details(user_id)
+
+    def set_user_status(self, user_id: str, disabled: bool) -> str:
+        """Enables or disables a user account."""
+        return self.admin.set_user_status(user_id, disabled)
+
+    def get_user_groups(self, page: int = 1, pagesize: int = 100) -> List[Dict[str, Any]]:
+        """Lists user groups."""
+        return self.admin.get_user_groups(page=page, pagesize=pagesize)
+
+    def get_group_users(self, group_id: str) -> List[Dict[str, str]]:
+        """Lists members of a group."""
+        return self.admin.get_group_users(group_id)
+
+    def get_active_sessions(self) -> List[Dict[str, Any]]:
+        """Lists active CMS connections."""
+        return self.admin.get_active_sessions()
+
+    def terminate_session(self, session_id: str) -> str:
+        """Terminates an active session."""
+        return self.admin.terminate_session(session_id)
+
+    # =========================================================================
+    # Schedules & Instances
+    # =========================================================================
+
+    def get_doc_schedules(self, webi_doc_id: str) -> List[Dict[str, Any]]:
+        """Lists schedules of a document."""
+        return self.schedule.get_doc_schedules(webi_doc_id)
+
+    def get_doc_instances(self, webi_doc_id: str, max_instances: int = 50) -> List[Dict[str, Any]]:
+        """Lists instance run history."""
+        return self.schedule.get_doc_instances(webi_doc_id, max_instances=max_instances)
+
+    def get_instance_details(self, instance_id: str) -> Dict[str, Any]:
+        """Gets diagnostics and error message of an instance."""
+        return self.schedule.get_instance_details(instance_id)
+
+    def delete_instance(self, instance_id: str) -> bool:
+        """Deletes an execution instance."""
+        return self.schedule.delete_instance(instance_id)

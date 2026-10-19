@@ -4,9 +4,9 @@
 [![MCP](https://img.shields.io/badge/MCP-1.22.0-green.svg)](https://modelcontextprotocol.io)
 [![Python](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Package Manager](https://img.shields.io/badge/uv-package%20manager-purple.svg)](https://astral.sh/uv)
-[![SAP BO](https://img.shields.io/badge/SAP%20BusinessObjects-BI%204.x%20%2F%20202x-orange.svg)](https://www.sap.com)
+[![SAP BO](https://img.shields.io/badge/SAP%20BusinessObjects-BI%204.3%20SP5-orange.svg)](https://www.sap.com)
 
-A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform** administration and inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to authenticate, discover universes, inspect Web Intelligence (Webi) reports, navigate repository folder structures, analyze data providers, and perform document maintenance tasks directly from natural language prompts.
+A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 44 specialized enterprise tools directly from natural language prompts.
 
 ---
 
@@ -21,14 +21,21 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [3. Install Dependencies](#3-install-dependencies)
   - [4. Verify MCP Server Installation](#4-verify-mcp-server-installation)
 - [Architecture & Deep Dive](#architecture--deep-dive)
+  - [Modular Domain Services Architecture](#modular-domain-services-architecture)
   - [Directory Structure](#directory-structure)
   - [System Flow Diagram](#system-flow-diagram)
-  - [Component Breakdown](#component-breakdown)
+  - [Domain Services Breakdown](#domain-services-breakdown)
   - [Authentication & Session Lifecycle](#authentication--session-lifecycle)
-  - [SAP BusinessObjects REST API Surface](#sap-businessobjects-rest-api-surface)
-- [Available MCP Tools Reference](#available-mcp-tools-reference)
-  - [Tool Summary Table](#tool-summary-table)
-  - [Detailed Tool Specifications](#detailed-tool-specifications)
+- [Available MCP Tools Reference (44 Tools)](#available-mcp-tools-reference-44-tools)
+  - [1. Authentication (2 Tools)](#1-authentication-2-tools)
+  - [2. Universes & Semantic Layer (5 Tools)](#2-universes--semantic-layer-5-tools)
+  - [3. Web Intelligence Documents & Lifecycle (5 Tools)](#3-web-intelligence-documents--lifecycle-5-tools)
+  - [4. Webi Prompts, Parameters & Refresh (3 Tools)](#4-webi-prompts-parameters--refresh-3-tools)
+  - [5. Webi Tabs, Blocks & Tabular Data (5 Tools)](#5-webi-tabs-blocks--tabular-data-5-tools)
+  - [6. Data Providers & SQL (6 Tools)](#6-data-providers--sql-6-tools)
+  - [7. Central Management Server (CMS) Admin & Security (8 Tools)](#7-central-management-server-cms-admin--security-8-tools)
+  - [8. Schedules & Instance Diagnostics (4 Tools)](#8-schedules--instance-diagnostics-4-tools)
+  - [9. InfoStore, Folders & Categories (6 Tools)](#9-infostore-folders--categories-6-tools)
 - [Environment Variables](#environment-variables)
 - [Client Integration Guide](#client-integration-guide)
   - [1. Google Antigravity IDE](#1-google-antigravity-ide)
@@ -46,13 +53,14 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
 ## Key Features
 
 - **Automated Authentication**: Log on using user/password or trusted credentials, retrieve and store the `X-SAP-LogonToken` transparently across sessions.
-- **Semantic Layer & Universe Discovery**: Retrieve UNX and UNV universes, query details (type, CUID, name), and map relationships.
-- **Webi Document Intelligence**: Extract Webi document metadata, folder paths, CUIDs, refresh/schedule statuses, and document states.
-- **Data Provider Inspection & Purging**: Enumerate all queries and data providers within Webi reports, retrieve data source details, and purge data to reduce storage and reset cache before distribution.
-- **Repository Hierarchy Traversal**: Recursively traverse CMS folder trees from any root folder and locate all Webi documents contained within.
-- **CMS Query Integration**: Execute high-performance Central Management Server (CMS) queries using the BI Platform InfoStore and Semantic Layer APIs.
-- **Document Lifecycle Actions**: Save/overwrite Webi reports with comments preserved, or safely remove obsolete documents.
-- **Multi-Client Ready**: Fully compatible with Antigravity IDE, Antigravity CLI (`agy`), Claude Desktop, Cursor, and any MCP client supporting the `stdio` transport.
+- **Web Intelligence Execution & Data Extraction**: Retrieve prompts, query Allowed Values (LOV), answer prompts, trigger live document refresh, and extract tabular cell data from table and chart blocks without generating bloated binary files.
+- **Data Provider SQL Inspection**: Extract the raw SQL query generated by the Semantic Layer for any Data Provider in a report.
+- **Central Management Server (CMS) SQL Engine**: Execute arbitrary CMS SQL queries against `CI_INFOOBJECTS`, `CI_APPOBJECTS`, and `CI_SYSTEMOBJECTS` for deep platform introspection.
+- **User & Security Administration**: List user accounts, inspect profile details, enable/disable accounts, list user groups, inspect group memberships, monitor active sessions, and terminate connections.
+- **Semantic Layer & Universe Lineage**: Query UNX and UNV universes, inspect business classes/dimensions/measures, and map reports referencing each universe.
+- **Schedule & Instance Diagnostics**: View scheduled execution rules, inspect instance history (*Success*, *Failed*, *Running*), and diagnose error messages of failed jobs.
+- **Repository Hierarchy Traversal**: Recursively traverse CMS folder trees and corporate categories.
+- **Modular & Web-Ready**: Architecture decoupled into standalone domain services (`services/`), ready for native integration into a future FastAPI or Flask web application.
 
 ---
 
@@ -60,26 +68,24 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
 
 | Layer | Component | Version / Description |
 | :--- | :--- | :--- |
-| **Runtime** | Python | `>= 3.13` |
+| **Runtime** | Python | `>= 3.13` (Modern Python 3.13+ typing, dataclasses, pattern matching) |
 | **Package Management** | Astral `uv` | Fast virtual environment & dependency management via `pyproject.toml` |
-| **MCP Framework** | `fastmcp` | `2.13.1` (FastMCP 2.0 Generation 2) |
+| **MCP Framework** | `fastmcp` | `2.13.1` (FastMCP 2.0 Generation 2, 44 registered tools) |
 | **MCP Specification** | `mcp` | `1.22.0` (Standard Model Context Protocol) |
-| **HTTP Engine** | `requests` | `2.32.5` persistent HTTP sessions with `requests.Session()` |
+| **HTTP Engine** | `requests` | `2.32.5` persistent HTTP keep-alive session with custom timeout |
 | **Data Validation** | `pydantic` | `2.12.5` |
-| **Configuration** | `python-dotenv` | `1.2.1` for loading `.env` configuration |
-| **Target Platform** | SAP BusinessObjects BI | BI 4.2 / 4.3 / 202x with REST Web Services (`biprws`) enabled |
+| **Configuration** | `python-dotenv` | `1.2.1` for loading `.env` configuration relative to script location |
+| **Target Platform** | SAP BusinessObjects BI | BI 4.3 SP5 (Support Package 5) REST Web Services (`biprws` and `raylight`) |
 
 ---
 
 ## Prerequisites
 
-Before setting up the MCP server, ensure you have the following installed and accessible:
-
 1. **Python 3.13+**: Verified with Python 3.13.0+.
 2. **`uv` Package Manager** (recommended) or standard `pip` + `python3 -m venv`.
    - Install `uv` on macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
    - Or via Homebrew: `brew install uv`
-3. **Network Access to SAP BusinessObjects**:
+3. **Network Access to SAP BusinessObjects 4.3 SP5**:
    - Access to your SAP BI Platform REST Web Services URL (typically `http://<host>:<port>/biprws`).
    - A valid SAP BusinessObjects user account (e.g. Enterprise, LDAP, or WinAD) with rights to query the CMS and access Web Intelligence documents.
 
@@ -88,8 +94,6 @@ Before setting up the MCP server, ensure you have the following installed and ac
 ## Getting Started
 
 ### 1. Clone or Open the Repository
-
-Clone the repository to your local workstation:
 
 ```bash
 git clone https://github.com/your-username/BO_MCP.git
@@ -104,11 +108,11 @@ Copy the sample environment file to create your local `.env`:
 cp .env.example .env
 ```
 
-Open `.env` in your text editor and configure your SAP BusinessObjects server URL and credentials:
+Configure your SAP BusinessObjects server URL and credentials in `.env`:
 
 ```env
-# SAP BusinessObjects REST API Configuration
-SAP_BO_REST_API_URL="http://ora-rhel-01.pf.box:8080/biprws"
+# SAP BusinessObjects REST API Configuration (BI 4.3 SP5)
+SAP_BO_REST_API_URL="http://ora-rhel-01.lab.pf.box:8080/biprws"
 
 # Authentication Credentials
 SAP_BO_USERNAME="Administrator"
@@ -123,7 +127,6 @@ SAP_BO_PASSWORD="YourPasswordHere"
 Using `uv` (recommended):
 
 ```bash
-# Creates the virtual environment and installs all dependencies from uv.lock
 uv sync
 ```
 
@@ -137,7 +140,7 @@ pip install -r requirements.txt
 
 ### 4. Verify MCP Server Installation
 
-Run FastMCP inspection to verify that all 13 tools are properly registered and discoverable:
+Run FastMCP inspection to verify that all 44 tools are registered:
 
 ```bash
 uv run fastmcp inspect server.py
@@ -152,7 +155,7 @@ Server
   Generation:   2
 
 Components
-  Tools:        13
+  Tools:        44
   Prompts:      0
   Resources:    0
   Templates:    0
@@ -166,23 +169,30 @@ Environment
 
 ## Architecture & Deep Dive
 
-### Directory Structure
+### Modular Domain Services Architecture
+
+The codebase follows a clean, domain-driven service architecture. Business logic is separated into independent services, making each module testable in isolation and ready to be imported into a future Web API (e.g., FastAPI) without modifying FastMCP.
 
 ```text
 BO_MCP/
+├── core/
+│   ├── __init__.py
+│   ├── client.py              # BOEClient: HTTP keep-alive session, token lifecycle, error handling
+│   └── exceptions.py          # Custom domain exceptions (BOEAuthError, BOEProcessingError, etc.)
+├── services/
+│   ├── __init__.py
+│   ├── webi_service.py        # Web Intelligence: prompts, LOVs, refresh, tables, formulas, SQL
+│   ├── universe_service.py    # Universes: UNX/UNV, semantic hierarchy (/sl/v1), lineage
+│   ├── schedule_service.py    # Schedules: recurring jobs, instance history, failure diagnostics
+│   ├── admin_service.py       # CMS Admin: generic SQL queries, users, groups, active sessions
+│   └── infostore_service.py   # InfoStore: recursive folder traversal, categories, Webi lists
+├── server.py                  # FastMCP server exposing 44 typed MCP tools
+├── sdk_parser_new.py          # Unified Facade ensuring 100% backward compatibility
 ├── .agents/
-│   └── mcp_config.json      # Workspace MCP configuration for Antigravity IDE
-├── .env                     # Local environment secrets (excluded from git)
-├── .env.example             # Clean configuration template
-├── .gitignore               # Git ignore rules (.env, .venv, __pycache__, etc.)
-├── .python-version          # Python runtime pin (3.13)
-├── pyproject.toml           # Project metadata and dependencies specification
-├── README.md                # Comprehensive documentation
-├── requirements.txt         # Pinned requirements for standard pip workflows
-├── sdk_parser_new.py        # Core Python client for SAP BO REST APIs (BOESDKParser)
-├── server.py                # FastMCP server exposing tool definitions
-├── uv.lock                  # Deterministic dependency lockfile
-└── .venv/                   # Local virtual environment created by uv
+│   └── mcp_config.json        # Workspace configuration for Antigravity IDE
+├── .env                       # Local environment secrets (excluded from git)
+├── .env.example               # Clean configuration template
+└── README.md
 ```
 
 ### System Flow Diagram
@@ -198,22 +208,26 @@ BO_MCP/
                                v
 +-------------------------------------------------------------+
 |                    FastMCP Server (server.py)               |
-|  - Exposes 13 MCP Tools (@mcp.tool())                       |
-|  - Manages FastMCP lifecycle and tool parameters            |
+|  - Exposes 44 MCP Tools with docstrings & typed schemas     |
 |  - Injects environment variables from .env                  |
 +------------------------------+------------------------------+
                                |
-                      Python Method Calls
+                   Delegates to Domain Services
                                |
                                v
 +-------------------------------------------------------------+
-|                BOESDKParser (sdk_parser_new.py)             |
-|  - requests.Session() with persistent cookies & headers     |
-|  - Handles X-SAP-LogonToken header lifecycle                |
-|  - Builds and formats REST queries & CMS SQL payloads       |
+|               Domain Services Layer (services/)             |
+|  ├── WebiService        (Prompts, Refresh, Blocks, SQL)     |
+|  ├── UniverseService    (Semantic Tree, Lineage, UNX/UNV)   |
+|  ├── ScheduleService    (Instances, Diagnostics, Jobs)      |
+|  ├── AdminService       (CMS SQL Query, Users, Groups)      |
+|  └── InfostoreService   (Folders, Categories)               |
 +------------------------------+------------------------------+
                                |
-                       HTTP / HTTPS REST
+                   BOEClient (core/client.py)
+                   - requests.Session() keep-alive
+                   - X-SAP-LogonToken lifecycle
+                   - Configurable timeouts (default 120s)
                                |
                                v
 +-------------------------------------------------------------+
@@ -226,219 +240,97 @@ BO_MCP/
 +-------------------------------------------------------------+
 ```
 
-### Component Breakdown
+---
 
-1. **`server.py`**:
-   - The primary entry point for MCP clients.
-   - Instantiates `FastMCP("SAP Business Objects")`.
-   - Reads `SAP_BO_REST_API_URL`, `SAP_BO_USERNAME`, and `SAP_BO_PASSWORD` via `python-dotenv`.
-   - Parses the target host, protocol, and port, then initializes `BOESDKParser`.
-   - Registers all 13 tools via `@mcp.tool()` decorators with typed parameters, clear docstrings, and robust exception-to-string mappings.
-   - Runs `mcp.run()` using standard input/output (STDIO) transport.
+## Available MCP Tools Reference (44 Tools)
 
-2. **`sdk_parser_new.py` (`BOESDKParser`)**:
-   - The low-level API client interfacing directly with the SAP BI REST Web Services.
-   - Maintains a single persistent `requests.Session()` instance for efficient HTTP keep-alive connections.
-   - Automatically handles token extraction and injects the header `X-SAP-LogonToken: <token>` into all subsequent requests.
-   - Implements recursive folder traversal, CMS InfoStore queries, and Web Intelligence manipulation.
-
-### Authentication & Session Lifecycle
-
-Authentication follows the SAP BusinessObjects REST API two-stage handshake:
-
-1. **Logon Template Retrieval**:
-   - `GET /biprws/logon/long` returns the server's authentication template (specifying authentication scheme, e.g. `secEnterprise`).
-2. **Credential Transmission**:
-   - `POST /biprws/logon/long` sends `userName` and `password`.
-   - The SAP BO server validates credentials and issues a cryptographic `logonToken`.
-3. **Session State**:
-   - The token is attached to the default session headers as `X-SAP-LogonToken`.
-   - Subsequent calls to Raylight, InfoStore, and CMS Query reuse this session.
-4. **Logoff**:
-   - `POST /biprws/v1/logoff` invalidates the server session and closes the HTTP session.
-
-### SAP BusinessObjects REST API Surface
-
-| Endpoint Sub-path | Service Name | Responsibility |
+### 1. Authentication (2 Tools)
+| Tool | Parameters | Description |
 | :--- | :--- | :--- |
-| `/biprws/logon/long` | BI Platform Logon | User & password token-based authentication |
-| `/biprws/logon/trusted` | Trusted Authentication | Single sign-on using trusted principal certificates |
-| `/biprws/v1/logoff` | BI Platform Session | Session termination and token invalidation |
-| `/biprws/raylight/v1/universes` | Raylight Universes | Enumerate published universes and retrieve universe CUID/type |
-| `/biprws/raylight/v1/documents` | Raylight Webi | Webi document metadata, status, save, and delete |
-| `/biprws/raylight/v1/documents/{id}/dataproviders` | Raylight Data Providers | Query inspection, data source IDs, and data provider purge |
-| `/biprws/infostore/{id}/children` | InfoStore Navigation | Hierarchical folder and document tree enumeration |
-| `/biprws/v1/cmsquery` | CMS Query Service | Direct relational SQL-like queries against `CI_APPOBJECTS` and `CI_INFOOBJECTS` |
+| `login` | `username?`, `password?` | Authenticates against SAP BO, acquiring the `X-SAP-LogonToken`. Falls back to `.env` if omitted. |
+| `logout` | _none_ | Closes the active session on the BI platform and invalidates the session token. |
 
----
+### 2. Universes & Semantic Layer (5 Tools)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_universes` | _none_ | Lists all published UNX and UNV universes (ID, name, folder ID). |
+| `get_universe_details` | `universe_id` | Retrieves universe type (`unx`/`unv`), name, and CUID. |
+| `get_universe_structure` | `universe_id` | Traverses the full business layer tree (classes, dimensions, measures, attributes, hierarchies). |
+| `get_universe_related_reports` | `universe_id` | Queries the CMS to find all Webi reports referencing the universe (`SI_SL_DOCUMENTS` / `SI_WEBI`). |
+| `get_universe_connection_id` | `universe_id` | Retrieves the Data Connection ID associated with the universe. |
 
-## Available MCP Tools Reference
+### 3. Web Intelligence Documents & Lifecycle (5 Tools)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_documents` | `page=1`, `pagesize=50` | Retrieves a paginated list of Webi documents from the repository. |
+| `get_doc_details` | `webi_doc_id` | Retrieves report metadata: name, folder path, CUID, scheduled status, and state. |
+| `get_doc_properties` | `webi_doc_id` | Retrieves document configuration properties (refreshOnOpen, autoRefresh, etc.). |
+| `save_webi_doc` | `webi_doc_id`, `webi_doc_name` | Saves/overwrites a Webi document while preserving user comments. |
+| `delete_webi_doc` | `webi_doc_id` | Permanently deletes a Webi document from the CMS repository. |
 
-### Tool Summary Table
+### 4. Webi Prompts, Parameters & Refresh (3 Tools)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_doc_parameters` | `webi_doc_id` | Lists all prompt parameters (ID, prompt question, technical name, data type, optional/mandatory flag). |
+| `get_parameter_lov` | `webi_doc_id`, `parameter_id` | Retrieves the List of Values (LOV) allowed for a constrained prompt parameter. |
+| `refresh_webi_doc` | `webi_doc_id`, `parameters?` | Injects prompt answers and triggers report calculation in the active session. |
 
-| Tool Name | Parameters | Returns | Destructive? | Description |
-| :--- | :--- | :--- | :---: | :--- |
-| `login` | `username?`, `password?` | `str` | No | Authenticate with SAP BO and set session token |
-| `logout` | _none_ | `str` | No | Terminate session and close HTTP connection |
-| `get_universes` | _none_ | `List[Dict]` | No | List all available universes with ID, name, folder ID |
-| `get_universe_details` | `universe_id` | `Dict` | No | Retrieve universe type (`unx`/`unv`), name, and CUID |
-| `get_universe_related_reports` | `universe_id` | `Dict` | No | Find all Webi reports referencing a specific universe |
-| `get_folders` | `folder_id` | `List[str]` | No | Recursively list all folder IDs under a root folder |
-| `get_webi_docs` | `folder_id` | `List[str]` | No | List all Webi document IDs in a specified folder |
-| `get_doc_details` | `webi_doc_id` | `Dict` | No | Retrieve Webi report name, folder path, CUID, and state |
-| `save_webi_doc` | `webi_doc_id`, `webi_doc_name` | `str` | **Yes** | Save/overwrite Webi document while preserving comments |
-| `delete_webi_doc` | `webi_doc_id` | `str` | **Yes** | Permanently delete a Webi document from the CMS |
-| `get_dp` | `webi_doc_id` | `List[str]` | No | List all Data Provider IDs in a Webi document |
-| `get_dp_details` | `webi_doc_id`, `dp_id` | `Dict` | No | Get data source name, ID, and type for a data provider |
-| `purge_dp` | `webi_doc_id`, `dp_id` | `str` | **Yes** | Purge cached data from a specific data provider |
+### 5. Webi Tabs, Blocks & Tabular Data (5 Tools)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_reports` | `webi_doc_id` | Lists all sheets/tabs in a Webi document (returns report IDs and tab names). |
+| `get_report_elements` | `webi_doc_id`, `report_id` | Lists all visual elements (tables, charts, sections) inside a report tab. |
+| `get_report_element_data` | `webi_doc_id`, `report_id`, `element_id`, `max_rows=1000` | Extracts structured tabular data rows from a table block up to `max_rows`. |
+| `get_variables` | `webi_doc_id` | Retrieves all calculated variables and custom formulas defined in a document. |
+| `get_comments` | `webi_doc_id` | Retrieves collaborative user comments and cell annotations. |
 
----
+### 6. Data Providers & SQL (6 Tools)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_dp` | `webi_doc_id` | Lists all Data Provider identifiers (e.g. `DP0`, `DP1`) in a document. |
+| `get_dp_details` | `webi_doc_id`, `dp_id` | Retrieves data source name, ID, type, and update status for a Data Provider. |
+| `get_dp_sql` | `webi_doc_id`, `dp_id` | **Extracts the raw SQL query** statement generated by the Semantic Layer. |
+| `get_dp_specification` | `webi_doc_id`, `dp_id` | Retrieves query specification tree (result objects, query filters, sort rules). |
+| `refresh_dp` | `webi_doc_id`, `dp_id` | Refreshes a single Data Provider without recalculating the rest of the report. |
+| `purge_dp` | `webi_doc_id`, `dp_id` | Purges cached data rows from a Data Provider to reduce storage size. |
 
-### Detailed Tool Specifications
+### 7. Central Management Server (CMS) Admin & Security (8 Tools)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `cms_query` | `query`, `page=1`, `pagesize=1000` | **Executes arbitrary CMS SQL queries** against `CI_INFOOBJECTS`, `CI_APPOBJECTS`, `CI_SYSTEMOBJECTS`. |
+| `get_users` | `page=1`, `pagesize=100` | Lists user accounts (ID, username, email, disabled status, last logon). |
+| `get_user_details` | `user_id` | Retrieves full profile properties of a specific user ID. |
+| `set_user_status` | `user_id`, `disabled: bool` | Enables (`disabled=False`) or disables (`disabled=True`) a user account. |
+| `get_user_groups` | `page=1`, `pagesize=100` | Retrieves all User Groups along with member counts. |
+| `get_group_users` | `group_id` | Lists all users that are members of a specific User Group. |
+| `get_active_sessions` | _none_ | Monitors active connections and user sessions open on the CMS. |
+| `terminate_session` | `session_id` | Forcibly terminates an active connection session by connection ID. |
 
-#### 1. `login`
-- **Description**: Authenticates against the SAP BusinessObjects REST API. Must be called before running queries if the session is not yet established. If `username` or `password` are omitted, falls back to `SAP_BO_USERNAME` and `SAP_BO_PASSWORD` defined in `.env`.
-- **Signature**: `login(username: str = None, password: str = None) -> str`
-- **Example Response**:
-  ```text
-  "Login successful"
-  ```
+### 8. Schedules & Instance Diagnostics (4 Tools)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_doc_schedules` | `webi_doc_id` | Lists scheduled execution rules defined for a Webi document. |
+| `get_doc_instances` | `webi_doc_id`, `max_instances=50` | Retrieves historical run instances (*Success*, *Failed*, *Running*) with timestamps. |
+| `get_instance_details` | `instance_id` | Retrieves diagnostic information for an instance run, including failure error messages. |
+| `delete_instance` | `instance_id` | Deletes a historical report execution instance from the CMS repository. |
 
-#### 2. `logout`
-- **Description**: Closes the active session on the BI platform and invalidates the session token.
-- **Signature**: `logout() -> str`
-- **Example Response**:
-  ```text
-  "Logout successful"
-  ```
-
-#### 3. `get_universes`
-- **Description**: Retrieves all universes published to the BI platform.
-- **Signature**: `get_universes() -> List[Dict[str, str]]`
-- **Example Response**:
-  ```json
-  [
-    {
-      "id": "582910",
-      "name": "eFashion",
-      "folderId": "6512"
-    },
-    {
-      "id": "691420",
-      "name": "Financials UNX",
-      "folderId": "8901"
-    }
-  ]
-  ```
-
-#### 4. `get_universe_details`
-- **Description**: Returns detailed metadata for a specific universe ID, including the universe engine type (`unx` for Information Design Tool or `unv` for Universe Design Tool).
-- **Signature**: `get_universe_details(universe_id: str) -> Dict[str, str]`
-- **Example Response**:
-  ```json
-  {
-    "u_type": "unx",
-    "u_name": "Financials UNX",
-    "u_cuid": "AQb4Y0g7b6pEvM...kY"
-  }
-  ```
-
-#### 5. `get_universe_related_reports`
-- **Description**: Queries the CMS repository (`CI_APPOBJECTS`) to discover all Webi reports built upon the specified universe. Automatically handles schema differences between UNX (`SI_SL_DOCUMENTS`) and UNV (`SI_WEBI`).
-- **Signature**: `get_universe_related_reports(universe_id: str) -> Dict[str, Any]`
-- **Example Response**:
-  ```json
-  {
-    "universe_id": "691420",
-    "universe_name": "Financials UNX",
-    "reports": ["120934", "120935", "121400"]
-  }
-  ```
-
-#### 6. `get_folders`
-- **Description**: Recursively traverses the CMS InfoStore hierarchy starting from `folder_id` and returns a flat list of all descendant folder IDs.
-- **Signature**: `get_folders(folder_id: str) -> List[str]`
-- **Example Response**:
-  ```json
-  ["1001", "1002", "1045", "1099"]
-  ```
-
-#### 7. `get_webi_docs`
-- **Description**: Retrieves all Web Intelligence document IDs situated directly inside the specified folder.
-- **Signature**: `get_webi_docs(folder_id: str) -> List[str]`
-- **Example Response**:
-  ```json
-  ["239401", "239402", "240119"]
-  ```
-
-#### 8. `get_doc_details`
-- **Description**: Returns detailed runtime and storage attributes of a Webi report.
-- **Signature**: `get_doc_details(webi_doc_id: str) -> Optional[Dict[str, Any]]`
-- **Example Response**:
-  ```json
-  {
-    "webi_doc_name": "Monthly Sales Summary",
-    "webi_doc_path": "Public Folders/Sales/EMEA",
-    "webi_doc_cuid": "AX10b2k5m9pL...aZ",
-    "webi_doc_scheduled": false,
-    "webi_doc_state": "Unused"
-  }
-  ```
-
-#### 9. `save_webi_doc`
-- **Description**: Saves or overwrites a Webi document with a new or existing name while ensuring all user comments and annotations are preserved (`withComments=true`).
-- **Signature**: `save_webi_doc(webi_doc_id: str, webi_doc_name: str) -> str`
-- **Example Response**:
-  ```text
-  "Successfully saved document 239401 as Monthly Sales Summary"
-  ```
-
-#### 10. `delete_webi_doc`
-- **Description**: Permanently deletes the specified Webi document from the repository.
-- **Signature**: `delete_webi_doc(webi_doc_id: str) -> str`
-- **Example Response**:
-  ```text
-  "Successfully deleted document 239401"
-  ```
-
-#### 11. `get_dp`
-- **Description**: Lists all Data Provider identifiers (e.g. `DP0`, `DP1`) defined inside a Webi document.
-- **Signature**: `get_dp(webi_doc_id: str) -> List[str]`
-- **Example Response**:
-  ```json
-  ["DP0", "DP1"]
-  ```
-
-#### 12. `get_dp_details`
-- **Description**: Fetches the underlying data source information for a specific Data Provider (e.g. underlying Universe ID, source type, and datasource name).
-- **Signature**: `get_dp_details(webi_doc_id: str, dp_id: str) -> Optional[Dict[str, str]]`
-- **Example Response**:
-  ```json
-  {
-    "id": "DP0",
-    "dataSourceId": "691420",
-    "dataSourceType": "unx",
-    "dataSourceName": "Financials UNX"
-  }
-  ```
-
-#### 13. `purge_dp`
-- **Description**: Purges all retrieved data rows from the specified data provider (`?purge=true`), reducing file size and clearing stale query results.
-- **Signature**: `purge_dp(webi_doc_id: str, dp_id: str) -> str`
-- **Example Response**:
-  ```text
-  "Successfully purged data provider DP0 from document 239401"
-  ```
+### 9. InfoStore, Folders & Categories (6 Tools)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_folders` | `folder_id` | Recursively traverses subfolder IDs starting from a parent folder. |
+| `get_folder_details` | `folder_id` | Retrieves metadata of a repository folder (name, CUID, parent ID, description). |
+| `create_folder` | `name`, `parent_folder_id`, `description?` | Creates a new folder in the InfoStore repository under a parent folder. |
+| `delete_folder` | `folder_id` | Permanently deletes a folder from the InfoStore repository. |
+| `get_webi_docs` | `folder_id` | Lists all Webi document IDs located directly inside a repository folder. |
+| `get_categories` | _none_ | Lists all Corporate Categories defined in the BI platform repository. |
 
 ---
 
 ## Environment Variables
 
-The server reads configuration from environment variables or a local `.env` file located in the project root:
-
 | Variable | Required? | Default | Description | Example |
 | :--- | :---: | :---: | :--- | :--- |
-| `SAP_BO_REST_API_URL` | **Yes** | `None` (fallback: `http://ora-rhel-01.pf.box:8080/biprws`) | Full URL to SAP BI Platform REST Web Services (`biprws`) | `http://boserver.corp:8080/biprws` |
+| `SAP_BO_REST_API_URL` | **Yes** | `http://ora-rhel-01.lab.pf.box:8080/biprws` | URL to SAP BI Platform REST Web Services (`biprws`) | `http://boserver.corp:8080/biprws` |
 | `SAP_BO_USERNAME` | Optional | `None` | Default username for the `login` tool | `Administrator` |
 | `SAP_BO_PASSWORD` | Optional | `None` | Default password for the `login` tool | `SecretP@ssw0rd` |
 
@@ -448,13 +340,8 @@ The server reads configuration from environment variables or a local `.env` file
 
 ### 1. Google Antigravity IDE
 
-Antigravity IDE discovers and registers MCP servers configured either at the **workspace level** or the **global user level**.
-
-#### Option A: Workspace Configuration (Recommended for this project)
-
-The project includes `.agents/mcp_config.json` in the root directory. When you open this folder in Antigravity IDE, the server is automatically discovered.
-
-Verify that [`.agents/mcp_config.json`](file:///.agents/mcp_config.json) contains:
+#### Workspace Configuration (Automatic)
+The repository includes [`.agents/mcp_config.json`](file:///.agents/mcp_config.json). When you open this folder in Antigravity IDE, all 44 tools are registered automatically:
 
 ```json
 {
@@ -468,61 +355,17 @@ Verify that [`.agents/mcp_config.json`](file:///.agents/mcp_config.json) contain
 }
 ```
 
-> [!TIP]
-> If you are using a standard virtualenv instead of `uv`, you can point `command` directly to the interpreter:
-> ```json
-> {
->   "mcpServers": {
->     "sap-business-objects": {
->       "command": "/absolute/path/to/BO_MCP/.venv/bin/python",
->       "args": ["/absolute/path/to/BO_MCP/server.py"]
->     }
->   }
-> }
-> ```
-
-#### Option B: Global Configuration (Available across all workspaces)
-
-To use the SAP BO server in any workspace within Antigravity IDE, add it to your global configuration file:
-
-**File path**: `~/.gemini/config/mcp_config.json`
-
-```json
-{
-  "mcpServers": {
-    "sap-business-objects": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/Users/alessio/Insync/ballarin.alessio@gmail.com/GoogleDrive/programming/Python/MCP/BO_MCP",
-        "run",
-        "python",
-        "server.py"
-      ]
-    }
-  }
-}
-```
-
-#### Verifying in Antigravity IDE
-
-1. Open Antigravity IDE.
-2. In the right-hand panel or menu, click **Additional Options (...) > MCP Servers**.
-3. Confirm that `sap-business-objects` shows a green connected status and lists **13 tools**.
-4. In the Sidebar Chat (Agent mode), you can now prompt the agent directly:
-   - *"Accedi al server SAP BusinessObjects ed elencami tutti gli universi disponibili."*
-   - *"Cerca tutti i report Web Intelligence collegati all'universo ID 582910 e mostrami i dettagli del primo report."*
-   - *"Esegui il purge del data provider DP0 del report Webi 12345 e salvalo."*
+#### Natural Language Prompts in Sidebar Chat (Agent Mode)
+- *"Accedi a SAP BO ed esegui una query CMS per trovare tutti i report Webi che hanno fallito la schedulazione oggi."*
+- *"Estrai la query SQL generata dal data provider DP3 del report Webi 6096."*
+- *"Mostrami i prompt del report 12345, rispondi con anno=2026 ed esegui il refresh."*
+- *"Elenca gli utenti del gruppo Administrators e verifica le sessioni attive sul CMS."*
 
 ---
 
 ### 2. Antigravity CLI (`agy`)
 
-The terminal-based Antigravity CLI (`agy`) reads global customizations from `~/.gemini/config/mcp_config.json`.
-
-#### Step 1: Configure `~/.gemini/config/mcp_config.json`
-
-Add the server entry:
+Add the server to `~/.gemini/config/mcp_config.json`:
 
 ```json
 {
@@ -541,58 +384,21 @@ Add the server entry:
 }
 ```
 
-#### Step 2: Launch `agy`
-
-Open your terminal and run:
+Run `agy` and prompt directly:
 
 ```bash
 agy
+> Login to SAP BusinessObjects and list all active CMS sessions.
 ```
-
-#### Step 3: Use Tools in CLI
-
-Once inside the interactive CLI session:
-
-```text
-> Login to SAP BusinessObjects and list the first 5 universes.
-```
-
-The agent will invoke `login()`, call `get_universes()`, and format the resulting list as a clean table in your terminal.
 
 ---
 
 ### 3. FastMCP Development Inspector (Web UI)
 
-FastMCP includes an interactive browser-based development inspector where you can test tools without an AI client:
+Test tools via an interactive browser form:
 
 ```bash
 uv run fastmcp dev server.py
-```
-
-- This command starts the MCP server and launches a local web UI (usually at `http://localhost:5173` or `http://localhost:6274`).
-- You can fill out form fields for tool arguments (e.g., test `login`, run `get_universes`, inspect `get_doc_details`) and view the raw JSON-RPC requests and responses.
-
----
-
-### 4. Claude Desktop & Other MCP Hosts
-
-For Anthropic Claude Desktop, add the configuration to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
-```json
-{
-  "mcpServers": {
-    "sap-business-objects": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/path/to/BO_MCP",
-        "run",
-        "python",
-        "server.py"
-      ]
-    }
-  }
-}
 ```
 
 ---
@@ -602,94 +408,14 @@ For Anthropic Claude Desktop, add the configuration to `~/Library/Application Su
 | Command | Purpose |
 | :--- | :--- |
 | `uv sync` | Install or update dependencies from `uv.lock` |
-| `uv run fastmcp inspect server.py` | Inspect the server and display tool counts and versions |
-| `uv run fastmcp dev server.py` | Launch the interactive FastMCP Web Inspector for live debugging |
-| `uv run python server.py` | Run the MCP server directly in STDIO mode |
-| `uv run python -c "import server; print(server.mcp.name)"` | Quick import sanity test |
-
----
-
-## Testing & Verification
-
-### 1. Schema and Tool Check
-
-Verify that all tools compile and validate:
-
-```bash
-uv run python -c "import server; print(f'Successfully loaded {len(server.mcp._tool_manager._tools)} tools on {server.mcp.name}')"
-```
-
-Expected output:
-```text
-Successfully loaded 13 tools on SAP Business Objects
-```
-
-### 2. Live Connection Test
-
-You can test SAP BO connectivity directly in Python using `uv run python`:
-
-```python
-import os
-from sdk_parser_new import BOESDKParser
-
-# Initialize parser with your server parameters
-parser = BOESDKParser(host='your-host', port='8080')
-
-# Attempt login
-parser.set_logon_token(os.getenv('SAP_BO_USERNAME'), os.getenv('SAP_BO_PASSWORD'))
-print("Logon Token:", parser.logon_token)
-
-# Retrieve universes
-universes = parser.get_universes()
-print(f"Retrieved {len(universes)} universes.")
-
-# Clean logoff
-parser.bo_logoff()
-```
-
----
-
-## Troubleshooting
-
-### 1. `Login failed: Missing username or password`
-- **Cause**: Environment variables `SAP_BO_USERNAME` or `SAP_BO_PASSWORD` are not defined in `.env`, or the file is missing.
-- **Solution**: Copy `.env.example` to `.env` and fill in valid credentials.
-
-### 2. `Could not log on and set the logon token!` (HTTP 401 / 500)
-- **Cause**: Invalid SAP BO username or password, or the authentication service `/biprws/logon/long` rejected the request.
-- **Solution**:
-  - Verify your password does not contain unescaped characters.
-  - Test reaching `http://<host>:<port>/biprws/logon/long` with a browser or `curl`.
-  - Confirm the default authentication scheme (e.g. `secEnterprise`) is active on the server.
-
-### 3. `Failed to get universes: Could not retrieve universes - have you set a valid logon token?`
-- **Cause**: A tool was invoked before calling `login()`, or the SAP BO session expired.
-- **Solution**: Call the `login` tool first. Sessions in SAP BO automatically expire after an inactivity timeout (typically 20-30 minutes).
-
-### 4. SSL / InsecureRequestWarning Warnings
-- **Cause**: The client uses `verify=False` to allow enterprise internal self-signed SSL certificates.
-- **Solution**: This is expected for internal sandbox environments. For production environments with valid corporate root CA certificates, modify `verify=True` in `sdk_parser_new.py`.
-
-### 5. `WSR 00999` Error
-- **Cause**: Internal error in the Web Intelligence Processing Server (Raylight) when attempting to open a document that is corrupted, locked, or not a Webi document (e.g. Crystal Reports).
-- **Solution**: `BOESDKParser.get_doc_status()` traps this error code. Verify that the target document ID corresponds to a Web Intelligence report.
-
-### 6. Command Not Found: `uv`
-- **Solution**: Install `uv` via `brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`. Alternatively, use `.venv/bin/python` directly.
-
----
-
-## Security & Operational Best Practices
-
-1. **Protect Credentials**: Never commit `.env` or hardcode passwords. Store production credentials in secure environment variables or vault systems.
-2. **Dedicated Service Account**: Run this MCP server with a dedicated SAP BusinessObjects service user rather than personal administrative accounts.
-3. **Destructive Operations Caution**: Tools like `delete_webi_doc` and `purge_dp` modify or remove data permanently in the CMS. Set appropriate InfoStore folder permissions for the MCP service user to restrict write access to authorized folders only.
-4. **Network Boundaries**: Ensure the host running the MCP server has network access to port 8080 (or 6405 / 443 depending on your BIP deployment).
+| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 44 tools) |
+| `uv run fastmcp dev server.py` | Launch interactive web inspector for live debugging |
+| `uv run python server.py` | Run the MCP server in STDIO mode |
 
 ---
 
 ## Author & License
 
 - **Author**: Alessio Ballarin
-- **Version**: `0.1.0`
+- **Version**: `0.2.0` (Modular Domain Architecture)
 - **License**: Private / Internal Enterprise Use
