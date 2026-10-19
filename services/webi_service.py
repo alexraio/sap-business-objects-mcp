@@ -71,19 +71,26 @@ class WebiService:
             return resp["properties"]
         return {"raw": resp}
 
-    def save_webi_doc(self, webi_doc_id: str, webi_doc_name: str, folder_id: int = -1) -> str:
+    def save_webi_doc(self, webi_doc_id: str, webi_doc_name: Optional[str] = None, folder_id: Optional[int] = None) -> str:
         """
-        Saves or overwrites a Webi document while preserving user comments and annotations.
+        Saves a Webi document in place, or saves it with a new name/folder (Save As).
+        If webi_doc_name is omitted, saves changes in place via PUT.
         """
-        url = f"{self.client.webi_url}/documents/{webi_doc_id}?overwrite=true&withComments=true"
-        payload = {
-            "document": {
-                "name": webi_doc_name,
-                "folderId": folder_id,
+        if webi_doc_name:
+            fid = folder_id if folder_id is not None else -1
+            url = f"{self.client.webi_url}/documents/{webi_doc_id}?overwrite=true&withComments=true"
+            payload = {
+                "document": {
+                    "name": webi_doc_name,
+                    "folderId": fid,
+                }
             }
-        }
-        self.client.post(url, json_data=payload)
-        return f"Successfully saved document {webi_doc_id} as '{webi_doc_name}'"
+            self.client.post(url, json_data=payload)
+            return f"Successfully saved document {webi_doc_id} as '{webi_doc_name}'"
+        else:
+            url = f"{self.client.webi_url}/documents/{webi_doc_id}"
+            self.client.put(url)
+            return f"Successfully saved document {webi_doc_id} in place"
 
     def delete_webi_doc(self, webi_doc_id: str) -> bool:
         """
@@ -226,7 +233,7 @@ class WebiService:
         Retrieves the query specification (selected objects, query filters, sort order) of a Data Provider.
         """
         url = f"{self.client.webi_url}/documents/{webi_doc_id}/dataproviders/{dp_id}/specification"
-        resp = self.client.get(url)
+        resp = self.client.get(url, headers={"Accept": "text/xml"})
         return resp if isinstance(resp, dict) else {"raw": resp}
 
     def get_dp_sql(self, webi_doc_id: str, dp_id: str) -> str:
@@ -250,7 +257,6 @@ class WebiService:
             details = self.get_dp_details(webi_doc_id, dp_id)
             return details.get("sql", "SQL statement not directly exposed for this data provider type.")
 
-
     def refresh_dp(self, webi_doc_id: str, dp_id: str) -> str:
         """
         Refreshes a single Data Provider without refreshing the entire document.
@@ -266,6 +272,248 @@ class WebiService:
         url = f"{self.client.webi_url}/documents/{webi_doc_id}/dataproviders/{dp_id}?purge=true"
         self.client.put(url)
         return True
+
+    def _extract_universe_objects(self, universe_id: str) -> Dict[str, Dict[str, Any]]:
+        """
+        Extracts all queryable objects (dimensions, measures, attributes) from a universe
+        keyed by their unique ID (e.g. 'OBJ_147') for human-readable resolution.
+        """
+        url = f"{self.client.sl_url}/universes/{universe_id}"
+        try:
+            resp = self.client.get(url)
+        except Exception:
+            return {}
+
+        found: Dict[str, Dict[str, Any]] = {}
+
+        def recurse(node: Any, path: str = ""):
+            if isinstance(node, dict):
+                curr_name = node.get("name", "")
+                curr_path = f"{path}/{curr_name}" if path else curr_name
+                obj_id = node.get("@id") or node.get("id")
+                if obj_id:
+                    found[str(obj_id)] = {
+                        "id": str(obj_id),
+                        "name": curr_name,
+                        "path": curr_path,
+                        "type": node.get("@type") or node.get("type", "Unknown"),
+                    }
+                for v in node.values():
+                    if isinstance(v, (dict, list)):
+                        recurse(v, curr_path)
+            elif isinstance(node, list):
+                for item in node:
+                    recurse(item, path)
+
+        recurse(resp)
+        return found
+
+    def get_dp_mapping_proposal(
+        self,
+        webi_doc_id: str,
+        dp_id: str,
+        target_datasource_id: str,
+        strategies: Optional[Union[List[str], str]] = None,
+        resolve_names: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Generates and analyzes a Change Data Source mapping proposal for a Data Provider.
+        Evaluates mapping strategies in order (default: SameID, SamePath, SameName).
+
+        Mapping Strategies:
+          - SameID: Matches objects having identical unique IDs (100% precise, ideal for UNV->UNX converted via IDT).
+          - SamePath: Matches objects having the exact same qualified folder hierarchy (safely distinguishes homonyms).
+          - SameTechnicalName: Matches objects by underlying database column or technical name.
+          - SameName: Matches objects with identical display names, regardless of folder reorganization.
+          - CloseName: Fuzzy matching (Levenshtein distance) on names (handles minor typos, but risk of false positives).
+
+        Returns:
+          Enriched mapping proposal including source/target object names, paths, statuses ('Ok', 'Ambiguous', 'NotFound'),
+          match statistics, and the raw payload ready for submission.
+        """
+        # Normalize strategies list
+        default_strategies = ["SameID", "SamePath", "SameName"]
+        if strategies is None:
+            strat_list = default_strategies
+        elif isinstance(strategies, str):
+            strat_list = [s.strip() for s in strategies.split(",") if s.strip()]
+        else:
+            strat_list = [str(s).strip() for s in strategies if str(s).strip()]
+
+        strat_param = ",".join(strat_list)
+
+        url = (
+            f"{self.client.webi_url}/documents/{webi_doc_id}/dataproviders/mappings"
+            f"?originDataproviderIds={dp_id}&targetDatasourceId={target_datasource_id}&strategies={strat_param}"
+        )
+        resp = self.client.get(url)
+
+        mappings_raw = resp.get("mappings", {}).get("content", {}).get("mapping", [])
+        if isinstance(mappings_raw, dict):
+            mappings_raw = [mappings_raw]
+
+        # Extract source universe ID from data provider details
+        source_universe_id = None
+        try:
+            dp_details = self.get_dp_details(webi_doc_id, dp_id)
+            source_universe_id = dp_details.get("dataSourceId")
+        except Exception:
+            pass
+
+        # Resolve human-readable object names from universes if requested
+        source_objs: Dict[str, Dict[str, Any]] = {}
+        target_objs: Dict[str, Dict[str, Any]] = {}
+        if resolve_names:
+            if source_universe_id:
+                source_objs = self._extract_universe_objects(source_universe_id)
+            target_objs = self._extract_universe_objects(target_datasource_id)
+
+        enriched_mappings = []
+        ok_count = 0
+        unmapped_count = 0
+        ambiguous_count = 0
+
+        for m in mappings_raw:
+            status = m.get("@status", "Unknown")
+            source_info = m.get("source", {})
+            target_info = m.get("target", {})
+
+            src_id = str(source_info.get("id", ""))
+            tgt_id = str(target_info.get("id", "")) if target_info else ""
+
+            src_meta = source_objs.get(src_id, {})
+            tgt_meta = target_objs.get(tgt_id, {})
+
+            if status == "Ok":
+                ok_count += 1
+            elif status == "Ambiguous":
+                ambiguous_count += 1
+            else:
+                unmapped_count += 1
+
+            enriched_mappings.append({
+                "status": status,
+                "source_id": src_id,
+                "source_name": src_meta.get("name", src_id),
+                "source_path": src_meta.get("path", ""),
+                "source_type": src_meta.get("type", "Unknown"),
+                "target_id": tgt_id if tgt_id else None,
+                "target_name": tgt_meta.get("name", tgt_id) if tgt_id else None,
+                "target_path": tgt_meta.get("path", "") if tgt_id else None,
+                "target_type": tgt_meta.get("type", "Unknown") if tgt_id else None,
+            })
+
+        total = len(mappings_raw)
+        success_rate = round((ok_count / total * 100), 1) if total > 0 else 0.0
+
+        return {
+            "webi_doc_id": str(webi_doc_id),
+            "dataprovider_id": str(dp_id),
+            "source_datasource_id": source_universe_id,
+            "target_datasource_id": str(target_datasource_id),
+            "strategies_applied": strat_list,
+            "summary": {
+                "total_objects": total,
+                "mapped_ok": ok_count,
+                "ambiguous": ambiguous_count,
+                "unmapped": unmapped_count,
+                "match_rate_percentage": success_rate,
+                "all_mapped": (ok_count == total and total > 0),
+            },
+            "mappings": enriched_mappings,
+            "raw_proposal": resp,
+        }
+
+    def change_dp_datasource(
+        self,
+        webi_doc_id: str,
+        dp_id: str,
+        target_datasource_id: str,
+        strategies: Optional[Union[List[str], str]] = None,
+        custom_mappings: Optional[List[Dict[str, str]]] = None,
+        save: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Executes Change Data Source on a Web Intelligence Data Provider (e.g. UNV -> UNX migration or universe repointing).
+        Generates mapping proposal using evaluated strategies, applies any custom mapping overrides,
+        submits changes to Raylight, and optionally saves the document.
+
+        Args:
+          webi_doc_id: ID of the Web Intelligence document.
+          dp_id: Data Provider identifier (e.g. 'DP0').
+          target_datasource_id: ID of the target universe (UNX or UNV).
+          strategies: Optional list or comma-separated string of strategies (default: 'SameID,SamePath,SameName').
+          custom_mappings: Optional list of explicit mappings to override or supply missing matches.
+                           Example: [{"source_id": "OBJ_147", "target_id": "OBJ_147"}]
+          save: If True (default), permanently commits changes to the repository via PUT.
+        """
+        # Step 1: Fetch proposal
+        proposal = self.get_dp_mapping_proposal(
+            webi_doc_id=webi_doc_id,
+            dp_id=dp_id,
+            target_datasource_id=target_datasource_id,
+            strategies=strategies,
+            resolve_names=False,
+        )
+
+        payload = proposal.get("raw_proposal", {})
+        mappings = payload.get("mappings", {}).get("content", {}).get("mapping", [])
+        if isinstance(mappings, dict):
+            mappings = [mappings]
+            payload["mappings"]["content"]["mapping"] = mappings
+
+        # Step 2: Apply custom mappings if supplied
+        if custom_mappings:
+            custom_dict = {}
+            for cm in custom_mappings:
+                s = cm.get("source_id") or cm.get("source")
+                t = cm.get("target_id") or cm.get("target")
+                if s and t:
+                    custom_dict[str(s)] = str(t)
+
+            for m in mappings:
+                s_id = str(m.get("source", {}).get("id", ""))
+                if s_id in custom_dict:
+                    m["@status"] = "Ok"
+                    m["target"] = {"id": custom_dict[s_id]}
+                    del custom_dict[s_id]
+
+            # Append any remaining custom mappings not in proposal
+            for s_id, t_id in custom_dict.items():
+                mappings.append({
+                    "@status": "Ok",
+                    "source": {"id": s_id},
+                    "target": {"id": t_id},
+                })
+
+        # Step 3: POST to mappings endpoint
+        post_url = (
+            f"{self.client.webi_url}/documents/{webi_doc_id}/dataproviders/mappings"
+            f"?originDataproviderIds={dp_id}&targetDatasourceId={target_datasource_id}"
+        )
+        post_resp = self.client.post(post_url, json_data=payload)
+
+        # Step 4: Save document if requested
+        save_status = "not_saved"
+        if save:
+            self.save_webi_doc(webi_doc_id)
+            save_status = "saved_in_place"
+
+        # Step 5: Check updated DP details
+        try:
+            updated_details = self.get_dp_details(webi_doc_id, dp_id)
+        except Exception:
+            updated_details = {}
+
+        return {
+            "webi_doc_id": str(webi_doc_id),
+            "dataprovider_id": str(dp_id),
+            "target_datasource_id": str(target_datasource_id),
+            "status": "success",
+            "save_status": save_status,
+            "raylight_response": post_resp,
+            "updated_dataprovider": updated_details,
+        }
 
     # =========================================================================
     # 4. Reports (Tabs), Blocks & Tabular Data Extraction

@@ -185,9 +185,9 @@ class BOESDKParser:
         except Exception:
             return None
 
-    def save_webi_doc(self, webi_doc_id: str, webi_doc_name: str) -> None:
-        """Saves or overwrites a Webi document."""
-        self.webi.save_webi_doc(webi_doc_id, webi_doc_name)
+    def save_webi_doc(self, webi_doc_id: str, webi_doc_name: Optional[str] = None, folder_id: Optional[int] = None) -> str:
+        """Saves a Webi document in place, or saves it with a new name/folder (Save As)."""
+        return self.webi.save_webi_doc(webi_doc_id, webi_doc_name=webi_doc_name, folder_id=folder_id)
 
     def delete_webi_doc(self, webi_doc_id: str) -> bool:
         """Deletes a Webi document."""
@@ -250,6 +250,52 @@ class BOESDKParser:
     def refresh_dp(self, webi_doc_id: str, dp_id: str) -> str:
         """Refreshes a single Data Provider."""
         return self.webi.refresh_dp(webi_doc_id, dp_id)
+
+    def get_dp_specification(self, webi_doc_id: str, dp_id: str) -> Dict[str, Any]:
+        """Retrieves query specification (objects, filters, sorting) of a Data Provider."""
+        return self.webi.get_dp_specification(webi_doc_id, dp_id)
+
+    def get_dp_mapping_proposal(
+        self,
+        webi_doc_id: str,
+        dp_id: str,
+        target_datasource_id: str,
+        strategies: Optional[Union[List[str], str]] = None,
+        resolve_names: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Generates and analyzes a Change Data Source mapping proposal with strategy evaluation
+        and human-readable object names.
+        """
+        return self.webi.get_dp_mapping_proposal(
+            webi_doc_id=webi_doc_id,
+            dp_id=dp_id,
+            target_datasource_id=target_datasource_id,
+            strategies=strategies,
+            resolve_names=resolve_names,
+        )
+
+    def change_dp_datasource(
+        self,
+        webi_doc_id: str,
+        dp_id: str,
+        target_datasource_id: str,
+        strategies: Optional[Union[List[str], str]] = None,
+        custom_mappings: Optional[List[Dict[str, str]]] = None,
+        save: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Executes Change Data Source on a Data Provider (UNV->UNX or repointing),
+        applying strategy matching, custom overrides, and persistence.
+        """
+        return self.webi.change_dp_datasource(
+            webi_doc_id=webi_doc_id,
+            dp_id=dp_id,
+            target_datasource_id=target_datasource_id,
+            strategies=strategies,
+            custom_mappings=custom_mappings,
+            save=save,
+        )
 
     def purge_dp(self, webi_doc_id: str, dp_id: str) -> bool:
         """Purges cached data from a Data Provider."""

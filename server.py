@@ -171,13 +171,13 @@ def get_doc_properties(webi_doc_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def save_webi_doc(webi_doc_id: str, webi_doc_name: str) -> str:
+def save_webi_doc(webi_doc_id: str, webi_doc_name: Optional[str] = None) -> str:
     """
-    Saves or overwrites a Web Intelligence document preserving user comments.
+    Saves a Web Intelligence document in place (if webi_doc_name is omitted),
+    or saves/overwrites it with a specified name (Save As). Preserves user comments and annotations.
     """
     try:
-        parser.save_webi_doc(webi_doc_id, webi_doc_name)
-        return f"Successfully saved document {webi_doc_id} as '{webi_doc_name}'"
+        return parser.save_webi_doc(webi_doc_id, webi_doc_name)
     except Exception as e:
         return f"Error saving document: {str(e)}"
 
@@ -372,6 +372,75 @@ def purge_dp(webi_doc_id: str, dp_id: str) -> str:
         return f"Failed to purge data provider {dp_id}"
     except Exception as e:
         return f"Error purging data provider: {str(e)}"
+
+
+@mcp.tool()
+def get_dp_mapping_proposal(
+    webi_doc_id: str,
+    dp_id: str,
+    target_datasource_id: str,
+    strategies: Optional[str] = "SameID,SamePath,SameName",
+    resolve_names: bool = True,
+) -> Dict[str, Any]:
+    """
+    Generates and evaluates a Change Data Source mapping proposal for a Data Provider.
+    Simulates repointing a Web Intelligence query to a target universe (e.g. UNV to UNX or repointed UNX)
+    and reports matching status ('Ok', 'Ambiguous', 'NotFound') for all objects.
+
+    Mapping Strategies (evaluated in sequence):
+      - SameID: Matches objects having identical unique IDs. Recommended for UNV->UNX converted via IDT (100% precision).
+      - SamePath: Matches objects by full folder hierarchy path (e.g. [Folder]/[Subfolder]/[Object]). Distinguishes homonyms safely.
+      - SameTechnicalName: Matches objects by underlying database column or technical field name.
+      - SameName: Matches objects by display name across any folder reorganization.
+      - CloseName: Fuzzy string distance matching (Levenshtein). Helpful for minor typos/casing, but caution recommended.
+
+    Recommended default: 'SameID,SamePath,SameName'.
+    """
+    try:
+        return parser.get_dp_mapping_proposal(
+            webi_doc_id=webi_doc_id,
+            dp_id=dp_id,
+            target_datasource_id=target_datasource_id,
+            strategies=strategies,
+            resolve_names=resolve_names,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Failed to generate mapping proposal: {str(e)}")
+
+
+@mcp.tool()
+def change_dp_datasource(
+    webi_doc_id: str,
+    dp_id: str,
+    target_datasource_id: str,
+    strategies: Optional[str] = "SameID,SamePath,SameName",
+    custom_mappings: Optional[List[Dict[str, str]]] = None,
+    save: bool = True,
+) -> Dict[str, Any]:
+    """
+    Executes Change Data Source on a Web Intelligence Data Provider (e.g. migrating UNV to UNX or repointing universes).
+    Generates mapping proposal using evaluated strategies, applies any custom mapping overrides,
+    submits changes to Raylight, and optionally saves the document permanently in the repository.
+
+    Parameters:
+      webi_doc_id: ID of the Web Intelligence document.
+      dp_id: Data Provider identifier (e.g. 'DP0').
+      target_datasource_id: ID of the target universe (UNX or UNV).
+      strategies: Comma-separated list of strategies (default: 'SameID,SamePath,SameName').
+      custom_mappings: Optional list of explicit overrides, e.g. [{"source_id": "OBJ_147", "target_id": "OBJ_147"}].
+      save: If True (default), permanently commits changes to the repository via in-place save.
+    """
+    try:
+        return parser.change_dp_datasource(
+            webi_doc_id=webi_doc_id,
+            dp_id=dp_id,
+            target_datasource_id=target_datasource_id,
+            strategies=strategies,
+            custom_mappings=custom_mappings,
+            save=save,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Failed to change data source: {str(e)}")
 
 
 # =============================================================================
