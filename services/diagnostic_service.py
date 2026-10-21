@@ -254,8 +254,8 @@ class DiagnosticService:
                         "Spesso causato da rotazione password dell'utenza tecnica senza aggiornamento della connessione BO."
                     ),
                     recommended_actions=[
-                        "Accedere al CMC e testare la connessione relazionale associata all'universo del report.",
-                        "Aggiornare la password del service account nella connessione e salvare la configurazione.",
+                        "Aprire l'Information Design Tool (IDT), collegarsi alla sessione Repository e testare la connessione relazionale associata all'universo.",
+                        "Verificare/aggiornare le credenziali del service account nella connessione (.cnx/.cns) e ripubblicarla nel repository se necessario.",
                         "Verificare che l'account non sia stato bloccato sul DB per superamento tentativi falliti.",
                     ],
                 ),
