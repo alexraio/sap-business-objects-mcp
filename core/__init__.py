@@ -9,6 +9,12 @@ from .exceptions import (
     BOEProcessingError,
     BOEQueryError,
 )
+from .models import (
+    BatchDiagnosticsReport,
+    ClusterDiagnosis,
+    FailureCategory,
+    PotentialCause,
+)
 
 __all__ = [
     "BOEError",
@@ -16,4 +22,8 @@ __all__ = [
     "BOENotFoundError",
     "BOEProcessingError",
     "BOEQueryError",
+    "FailureCategory",
+    "PotentialCause",
+    "ClusterDiagnosis",
+    "BatchDiagnosticsReport",
 ]

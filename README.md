@@ -8,7 +8,7 @@
 [![CI](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml)
 [![SAP BO](https://img.shields.io/badge/SAP%20BusinessObjects-BI%204.3%20SP5-orange.svg)](https://www.sap.com)
 
-A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 46 specialized enterprise tools directly from natural language prompts.
+A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 47 specialized enterprise tools directly from natural language prompts.
 
 ---
 
@@ -28,7 +28,7 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [System Flow Diagram](#system-flow-diagram)
   - [Domain Services Breakdown](#domain-services-breakdown)
   - [Authentication & Session Lifecycle](#authentication--session-lifecycle)
-- [Available MCP Tools Reference (46 Tools)](#available-mcp-tools-reference-46-tools)
+- [Available MCP Tools Reference (47 Tools)](#available-mcp-tools-reference-47-tools)
   - [1. Authentication (2 Tools)](#1-authentication-2-tools)
   - [2. Universes & Semantic Layer (5 Tools)](#2-universes--semantic-layer-5-tools)
   - [3. Web Intelligence Documents & Lifecycle (5 Tools)](#3-web-intelligence-documents--lifecycle-5-tools)
@@ -38,6 +38,8 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [7. Central Management Server (CMS) Admin & Security (8 Tools)](#7-central-management-server-cms-admin--security-8-tools)
   - [8. Schedules & Instance Diagnostics (4 Tools)](#8-schedules--instance-diagnostics-4-tools)
   - [9. InfoStore, Folders & Categories (6 Tools)](#9-infostore-folders--categories-6-tools)
+  - [10. Intelligent Diagnostics & Batch Health Monitoring (1 Tool)](#10-intelligent-diagnostics--batch-health-monitoring-1-tool)
+
 - [Environment Variables](#environment-variables)
 - [Client Integration Guide](#client-integration-guide)
   - [1. Google Antigravity IDE](#1-google-antigravity-ide)
@@ -345,6 +347,12 @@ When migrating reports from UNV to UNX or repointing between universes, the SAP 
 | `get_webi_docs` | `folder_id` | Lists all Webi document IDs located directly inside a repository folder. |
 | `get_categories` | _none_ | Lists all Corporate Categories defined in the BI platform repository. |
 
+### 10. Intelligent Diagnostics & Batch Health Monitoring (1 Tool)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `diagnose_batch_failures` | `hours_back=12`, `kind='All'`, `folder_id?`, `max_instances=100` | **Scans, deduplicates, and diagnoses batch failures** for Webi reports and Publications (`SI_SCHEDULE_STATUS = 3`). Clusters failures by error signature and produces a structured Pydantic v2 RCA report with up to 3 ranked probable causes and actionable remediation steps. |
+
+
 ---
 
 ## Environment Variables
@@ -429,9 +437,9 @@ uv run fastmcp dev server.py
 | Command | Purpose |
 | :--- | :--- |
 | `uv sync --dev` | Install all dependencies including testing and linting tools |
-| `uv run pytest` | Run offline unit test suite with coverage report (45 tests) |
+| `uv run pytest` | Run offline unit test suite with coverage report (66 tests) |
 | `uv run ruff check .` | Run fast linting and style validation |
-| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 46 tools) |
+| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 47 tools) |
 | `uv run fastmcp dev server.py` | Launch interactive web inspector for live debugging |
 | `uv run python server.py` | Run the MCP server in STDIO mode |
 
@@ -447,7 +455,9 @@ Because SAP BusinessObjects Enterprise (BOE) requires a complex, proprietary on-
 - SAP BI platform specific error payloads (`WSR 00999`, invalid session tokens).
 - REST content negotiation (JSON vs. XML `Accept: text/xml` headers for query specifications).
 - Automatic and custom mapping strategies for changing Webi data sources.
-- Integrity and docstring coverage for all 46 FastMCP tools.
+- Integrity and docstring coverage for all 47 FastMCP tools.
+- Intelligent diagnostics error signature clustering, multi-cause ranking, and Pydantic validation.
+
 
 ### Running Tests Locally
 ```bash

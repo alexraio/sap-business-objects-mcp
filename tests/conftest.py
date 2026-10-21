@@ -10,6 +10,7 @@ import pytest
 
 from core.client import BOEClient
 from services.admin_service import AdminService
+from services.diagnostic_service import DiagnosticService
 from services.infostore_service import InfostoreService
 from services.schedule_service import ScheduleService
 from services.universe_service import UniverseService
@@ -57,6 +58,11 @@ def schedule_service(mock_client: MagicMock) -> ScheduleService:
 @pytest.fixture
 def infostore_service(mock_client: MagicMock) -> InfostoreService:
     return InfostoreService(mock_client)
+
+
+@pytest.fixture
+def diagnostic_service(mock_client: MagicMock) -> DiagnosticService:
+    return DiagnosticService(mock_client)
 
 
 @pytest.fixture
