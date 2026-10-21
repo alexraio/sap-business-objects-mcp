@@ -81,14 +81,30 @@ class DiagnosticService:
     # 2. Error Normalization and Signature Extraction
     # =========================================================================
 
-    def extract_error_signature(self, status_info: Optional[str], search_key: Optional[str] = None) -> str:
+    def extract_error_signature(
+        self,
+        status_info: Optional[Any],
+        search_key: Optional[str] = None,
+    ) -> str:
         """
         Normalizes variable error messages into a deterministic signature by stripping
         volatile elements (timestamps, PIDs, IP addresses, object IDs) and extracting
         standard SAP/DB failure codes (WIS, ORA, FBE, CRS, SocketTimeout, etc.).
+        Handles both string messages and CMS dictionary structures (e.g. SI_RESOURCEID).
         """
-        raw_msg = (status_info or "").strip()
-        raw_key = (search_key or "").strip()
+        if isinstance(status_info, dict):
+            if "SI_RESOURCEID" in status_info:
+                raw_msg = f"SI_RESOURCEID_{status_info['SI_RESOURCEID']}"
+            elif not status_info:
+                raw_msg = ""
+            else:
+                raw_msg = " ".join(str(v) for v in status_info.values() if v)
+        else:
+            raw_msg = str(status_info or "").strip()
+            if raw_msg in ("{}", "None", "null"):
+                raw_msg = ""
+
+        raw_key = str(search_key or "").strip()
 
         if not raw_msg and not raw_key:
             return "UNKNOWN_ABRUPT_SERVER_TERMINATION: SI_STATUSINFO vuoto (possibile crash di processo o stop nodo)"
@@ -547,13 +563,15 @@ class DiagnosticService:
         clusters_map: Dict[str, Dict[str, Any]] = {}
 
         for entry in entries:
-            status_info = str(entry.get("SI_STATUSINFO", ""))
+            status_info_raw = entry.get("SI_STATUSINFO")
+            status_info = str(status_info_raw or "")
             search_key = str(entry.get("SI_ERROR_SEARCH_KEY", ""))
             instance_id = str(entry.get("SI_ID", ""))
             report_name = str(entry.get("SI_NAME", "Unnamed Report"))
             parent_id = str(entry.get("SI_PARENTID", ""))
 
-            signature = self.extract_error_signature(status_info, search_key)
+            signature = self.extract_error_signature(status_info_raw, search_key)
+
             cluster_id = self._generate_cluster_id(signature)
 
             if cluster_id not in clusters_map:
