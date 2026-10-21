@@ -81,6 +81,20 @@ class DiagnosticService:
     # 2. Error Normalization and Signature Extraction
     # =========================================================================
 
+    def _flatten_status_info(self, obj: Any) -> str:
+        """Recursively extracts human-readable error strings from nested CMS dictionary structures."""
+        if isinstance(obj, dict):
+            # Prioritize substitution strings if present
+            parts = []
+            for k, v in obj.items():
+                if k == "SI_TOTAL":
+                    continue
+                parts.append(self._flatten_status_info(v))
+            return " ".join(p for p in parts if p).strip()
+        elif isinstance(obj, list):
+            return " ".join(self._flatten_status_info(x) for x in obj if x).strip()
+        return str(obj).strip() if obj is not None else ""
+
     def extract_error_signature(
         self,
         status_info: Optional[Any],
@@ -90,15 +104,16 @@ class DiagnosticService:
         Normalizes variable error messages into a deterministic signature by stripping
         volatile elements (timestamps, PIDs, IP addresses, object IDs) and extracting
         standard SAP/DB failure codes (WIS, ORA, FBE, CRS, SocketTimeout, etc.).
-        Handles both string messages and CMS dictionary structures (e.g. SI_RESOURCEID).
+        Handles both string messages and CMS nested dictionary structures (e.g. SI_SUBST_STRINGS, SI_RESOURCEID).
         """
         if isinstance(status_info, dict):
-            if "SI_RESOURCEID" in status_info:
+            flattened = self._flatten_status_info(status_info)
+            if flattened and not flattened.isdigit():
+                raw_msg = flattened
+            elif "SI_RESOURCEID" in status_info:
                 raw_msg = f"SI_RESOURCEID_{status_info['SI_RESOURCEID']}"
-            elif not status_info:
-                raw_msg = ""
             else:
-                raw_msg = " ".join(str(v) for v in status_info.values() if v)
+                raw_msg = flattened
         else:
             raw_msg = str(status_info or "").strip()
             if raw_msg in ("{}", "None", "null"):
