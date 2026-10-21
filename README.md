@@ -8,7 +8,7 @@
 [![CI](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml)
 [![SAP BO](https://img.shields.io/badge/SAP%20BusinessObjects-BI%204.3%20SP5-orange.svg)](https://www.sap.com)
 
-A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 46 specialized enterprise tools directly from natural language prompts.
+A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 47 specialized enterprise tools directly from natural language prompts.
 
 ---
 
@@ -28,7 +28,7 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [System Flow Diagram](#system-flow-diagram)
   - [Domain Services Breakdown](#domain-services-breakdown)
   - [Authentication & Session Lifecycle](#authentication--session-lifecycle)
-- [Available MCP Tools Reference (46 Tools)](#available-mcp-tools-reference-46-tools)
+- [Available MCP Tools Reference (47 Tools)](#available-mcp-tools-reference-47-tools)
   - [1. Authentication (2 Tools)](#1-authentication-2-tools)
   - [2. Universes & Semantic Layer (5 Tools)](#2-universes--semantic-layer-5-tools)
   - [3. Web Intelligence Documents & Lifecycle (5 Tools)](#3-web-intelligence-documents--lifecycle-5-tools)
@@ -38,6 +38,8 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [7. Central Management Server (CMS) Admin & Security (8 Tools)](#7-central-management-server-cms-admin--security-8-tools)
   - [8. Schedules & Instance Diagnostics (4 Tools)](#8-schedules--instance-diagnostics-4-tools)
   - [9. InfoStore, Folders & Categories (6 Tools)](#9-infostore-folders--categories-6-tools)
+  - [10. Intelligent Diagnostics & Batch Health Monitoring (1 Tool)](#10-intelligent-diagnostics--batch-health-monitoring-1-tool)
+
 - [Environment Variables](#environment-variables)
 - [Client Integration Guide](#client-integration-guide)
   - [1. Google Antigravity IDE](#1-google-antigravity-ide)
@@ -62,6 +64,7 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
 - **User & Security Administration**: List user accounts, inspect profile details, enable/disable accounts, list user groups, inspect group memberships, monitor active sessions, and terminate connections.
 - **Semantic Layer & Universe Lineage**: Query UNX and UNV universes, inspect business classes/dimensions/measures, and map reports referencing each universe.
 - **Schedule & Instance Diagnostics**: View scheduled execution rules, inspect instance history (*Success*, *Failed*, *Running*), and diagnose error messages of failed jobs.
+- **Intelligent Diagnostics & Batch Health Monitoring**: Scan, cluster, and diagnose failed nocturnal batch executions (`SI_SCHEDULE_STATUS = 3`) for Web Intelligence reports and Publications (bursting). Normalizes error signatures and delivers Pydantic v2 structured reports with up to 3 ranked probable causes and actionable administrator remediation steps.
 - **Repository Hierarchy Traversal**: Recursively traverse CMS folder trees and corporate categories.
 - **Modular & Web-Ready**: Architecture decoupled into standalone domain services (`services/`), ready for native integration into a future FastAPI or Flask web application.
 
@@ -73,12 +76,13 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
 | :--- | :--- | :--- |
 | **Runtime** | Python | `>= 3.13` (Modern Python 3.13+ typing, dataclasses, pattern matching) |
 | **Package Management** | Astral `uv` | Fast virtual environment & dependency management via `pyproject.toml` |
-| **MCP Framework** | `fastmcp` | `2.13.1` (FastMCP 2.0 Generation 2, 44 registered tools) |
+| **MCP Framework** | `fastmcp` | `2.13.1` (FastMCP 2.0 Generation 2, 47 registered tools) |
 | **MCP Specification** | `mcp` | `1.22.0` (Standard Model Context Protocol) |
 | **HTTP Engine** | `requests` | `2.32.5` persistent HTTP keep-alive session with custom timeout |
-| **Data Validation** | `pydantic` | `2.12.5` |
+| **Data Validation** | `pydantic` | `2.12.5` (Strict schema validation and structured diagnostic models) |
 | **Configuration** | `python-dotenv` | `1.2.1` for loading `.env` configuration relative to script location |
 | **Target Platform** | SAP BusinessObjects BI | BI 4.3 SP5 (Support Package 5) REST Web Services (`biprws` and `raylight`) |
+
 
 ---
 
@@ -143,7 +147,7 @@ pip install -r requirements.txt
 
 ### 4. Verify MCP Server Installation
 
-Run FastMCP inspection to verify that all 44 tools are registered:
+Run FastMCP inspection to verify that all 47 tools are registered:
 
 ```bash
 uv run fastmcp inspect server.py
@@ -158,7 +162,7 @@ Server
   Generation:   2
 
 Components
-  Tools:        44
+  Tools:        47
   Prompts:      0
   Resources:    0
   Templates:    0
@@ -181,15 +185,19 @@ BO_MCP/
 ├── core/
 │   ├── __init__.py
 │   ├── client.py              # BOEClient: HTTP keep-alive session, token lifecycle, error handling
-│   └── exceptions.py          # Custom domain exceptions (BOEAuthError, BOEProcessingError, etc.)
+│   ├── exceptions.py          # Custom domain exceptions (BOEAuthError, BOEProcessingError, etc.)
+│   └── models.py              # Pydantic v2 schemas: BatchDiagnosticsReport, ClusterDiagnosis, etc.
+├── docs/
+│   └── intelligent_diagnostics_agent_design.md # Full architectural design & RCA engine specs
 ├── services/
 │   ├── __init__.py
-│   ├── webi_service.py        # Web Intelligence: prompts, LOVs, refresh, tables, formulas, SQL
-│   ├── universe_service.py    # Universes: UNX/UNV, semantic hierarchy (/sl/v1), lineage
-│   ├── schedule_service.py    # Schedules: recurring jobs, instance history, failure diagnostics
 │   ├── admin_service.py       # CMS Admin: generic SQL queries, users, groups, active sessions
-│   └── infostore_service.py   # InfoStore: recursive folder traversal, categories, Webi lists
-├── server.py                  # FastMCP server exposing 44 typed MCP tools
+│   ├── diagnostic_service.py  # Intelligent Diagnostics: error clustering, multi-cause ranking, RCA
+│   ├── infostore_service.py   # InfoStore: recursive folder traversal, categories, Webi lists
+│   ├── schedule_service.py    # Schedules: recurring jobs, instance history, failure diagnostics
+│   ├── universe_service.py    # Universes: UNX/UNV, semantic hierarchy (/sl/v1), lineage
+│   └── webi_service.py        # Web Intelligence: prompts, LOVs, refresh, tables, formulas, SQL
+├── server.py                  # FastMCP server exposing 47 typed MCP tools
 ├── sdk_parser_new.py          # Unified Facade ensuring 100% backward compatibility
 ├── .agents/
 │   └── mcp_config.json        # Workspace configuration for Antigravity IDE
@@ -211,7 +219,7 @@ BO_MCP/
                                v
 +-------------------------------------------------------------+
 |                    FastMCP Server (server.py)               |
-|  - Exposes 44 MCP Tools with docstrings & typed schemas     |
+|  - Exposes 47 MCP Tools with docstrings & typed schemas     |
 |  - Injects environment variables from .env                  |
 +------------------------------+------------------------------+
                                |
@@ -220,6 +228,7 @@ BO_MCP/
                                v
 +-------------------------------------------------------------+
 |               Domain Services Layer (services/)             |
+|  ├── DiagnosticService  (Batch RCA, Error Clustering, Models)|
 |  ├── WebiService        (Prompts, Refresh, Blocks, SQL)     |
 |  ├── UniverseService    (Semantic Tree, Lineage, UNX/UNV)   |
 |  ├── ScheduleService    (Instances, Diagnostics, Jobs)      |
@@ -245,7 +254,8 @@ BO_MCP/
 
 ---
 
-## Available MCP Tools Reference (44 Tools)
+## Available MCP Tools Reference (47 Tools)
+
 
 ### 1. Authentication (2 Tools)
 | Tool | Parameters | Description |
@@ -345,6 +355,34 @@ When migrating reports from UNV to UNX or repointing between universes, the SAP 
 | `get_webi_docs` | `folder_id` | Lists all Webi document IDs located directly inside a repository folder. |
 | `get_categories` | _none_ | Lists all Corporate Categories defined in the BI platform repository. |
 
+### 10. Intelligent Diagnostics & Batch Health Monitoring (1 Tool)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `diagnose_batch_failures` | `hours_back=12`, `kind='All'`, `folder_id?`, `max_instances=100` | **Scans, deduplicates, and diagnoses batch failures** for Webi reports and Publications (`SI_SCHEDULE_STATUS = 3`). Clusters failures by error signature and produces a structured Pydantic v2 RCA report with up to 3 ranked probable causes and actionable remediation steps. |
+
+#### Automated Root Cause Analysis (RCA) & Error Clustering
+
+The `diagnose_batch_failures` tool automates nocturnal batch monitoring and incident triage by querying the CMS repository (`CI_INFOOBJECTS`) via `POST /biprws/v1/cmsquery` for instances with `SI_SCHEDULE_STATUS = 3` (Failed).
+
+1. **Error Normalization**: Recursively extracts text from nested CMS error structures (`SI_STATUSINFO`, `SI_SUBST_STRINGS`, `SI_RESOURCEID`), strips volatile runtime noise (timestamps, thread PIDs, hex addresses, IP addresses), and isolates standard SAP BO and database error codes (`WIS`, `ORA`, `CRS`, `FBE`, socket timeouts).
+2. **Signature Clustering & Deduplication**: Groups identical failures into clusters using deterministic SHA-256 fingerprinting. This prevents LLM context exhaustion when diagnosing hundreds of batch failures.
+3. **Smart Context Enrichment**: For clusters linked to prompt or calculation errors (`WIS 30270`, `WIS 30271`), automatically queries `/biprws/raylight/v1/documents/{id}/parameters` to identify unmapped or missing mandatory prompt parameters.
+4. **Multi-Cause Ranking & Actionable Remediation**: Assigns up to 3 ranked potential causes per cluster with confidence scores (`probability_score`) and concrete administrator remediation actions.
+5. **Pydantic v2 Structured Output**: Returns a strictly validated `BatchDiagnosticsReport` model for programmatic consumption.
+
+| Failure Category | Error Codes / Patterns | Typical Root Cause | Recommended Administrator Action |
+| :--- | :--- | :--- | :--- |
+| **`DB_LOCK_CONCURRENCY`** | `ORA-00060`, deadlock, lock request time out | Heavy transactional lock contention on data warehouse staging tables | Review DBA concurrent sessions, introduce job staggering (15-30 min intervals) |
+| **`AUTH_CREDENTIALS`** | `ORA-01017`, invalid username/password, logon denied | Expired DB technical service account or rotated password | Test relational connection (.cns/.cnx) in Information Design Tool (IDT) and update credentials |
+| **`NETWORK_TIMEOUT`** | SocketTimeoutException, Connection refused, timed out | Database listener or network firewall dropped keep-alive | Verify database server reachability, check listener port and connection pool timeouts |
+| **`MISSING_PROMPTS`** | `WIS 30270`, `WIS 30271`, missing mandatory parameter | Scheduled instance triggered without required parameter values | Inspect report prompt rules in CMS and supply missing default prompt answers |
+| **`CACHE_CORRUPTED`** | `WIS 30553`, processDPCommandsEx | Corrupted microcube cache in Web Intelligence Processing Server | Purge data provider cache via `purge_dp` or resave document definition |
+| **`BURSTING_RECIPIENT`** | `FBE60502`, `CRS 30000`, Publication error | Dynamic recipient source document empty or unmapped email attribute | Verify recipient query results and publication delivery destination mapping |
+| **`SERVER_RESOURCE_OOM`** | OutOfMemoryError, Java heap space, GC overhead | Adaptive Processing Server (APS) or Webi Processing Server memory exhaustion | Increase JVM max heap allocation (`-Xmx`) in CMC server properties and restart service |
+
+> [!NOTE]
+> In SAP BusinessObjects 4.x, relational connection testing (`.cns` / `.cnx` for UNX) is supported exclusively through the **Information Design Tool (IDT)** (or Universe Design Tool for legacy `.unv`). The Central Management Console (CMC) does not provide a relational connection testing function.
+
 ---
 
 ## Environment Variables
@@ -362,7 +400,7 @@ When migrating reports from UNV to UNX or repointing between universes, the SAP 
 ### 1. Google Antigravity IDE
 
 #### Workspace Configuration
-Create a `.agents/mcp_config.json` file in your workspace (see [`mcp_config.example.json`](file:///mcp_config.example.json)). When you open this folder in Antigravity IDE, all 46 tools are registered automatically:
+Create a `.agents/mcp_config.json` file in your workspace (see [`mcp_config.example.json`](file:///mcp_config.example.json)). When you open this folder in Antigravity IDE, all 47 tools are registered automatically:
 
 ```json
 {
@@ -377,10 +415,13 @@ Create a `.agents/mcp_config.json` file in your workspace (see [`mcp_config.exam
 ```
 
 #### Natural Language Prompts in Sidebar Chat (Agent Mode)
-- *"Accedi a SAP BO ed esegui una query CMS per trovare tutti i report Webi che hanno fallito la schedulazione oggi."*
-- *"Estrai la query SQL generata dal data provider DP3 del report Webi 6096."*
-- *"Mostrami i prompt del report 12345, rispondi con anno=2026 ed esegui il refresh."*
-- *"Elenca gli utenti del gruppo Administrators e verifica le sessioni attive sul CMS."*
+- *"Log into SAP BusinessObjects and perform intelligent diagnostics on batch executions that failed in the last 12 hours."*
+- *"Execute a CMS query to list all Webi report instances that failed scheduling today."*
+- *"Extract the raw SQL query generated by data provider DP3 of Webi report 6096."*
+- *"Inspect prompt parameters for report 12345, answer with year=2026, and trigger a document refresh."*
+- *"List all user accounts in the Administrators group and inspect active CMS sessions."*
+- *"Traverse the corporate repository hierarchy starting from Public Folders (ID 23)."*
+
 
 ---
 
@@ -424,14 +465,37 @@ uv run fastmcp dev server.py
 
 ---
 
+### 4. Claude Desktop & Other MCP Hosts
+
+For Anthropic Claude Desktop, add the configuration to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "sap-business-objects": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/BO_MCP",
+        "run",
+        "python",
+        "server.py"
+      ]
+    }
+  }
+}
+```
+
+---
+
 ## Available Scripts & Commands
 
 | Command | Purpose |
 | :--- | :--- |
 | `uv sync --dev` | Install all dependencies including testing and linting tools |
-| `uv run pytest` | Run offline unit test suite with coverage report (45 tests) |
+| `uv run pytest` | Run offline unit test suite with coverage report (66 tests) |
 | `uv run ruff check .` | Run fast linting and style validation |
-| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 46 tools) |
+| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 47 tools) |
 | `uv run fastmcp dev server.py` | Launch interactive web inspector for live debugging |
 | `uv run python server.py` | Run the MCP server in STDIO mode |
 
@@ -447,7 +511,9 @@ Because SAP BusinessObjects Enterprise (BOE) requires a complex, proprietary on-
 - SAP BI platform specific error payloads (`WSR 00999`, invalid session tokens).
 - REST content negotiation (JSON vs. XML `Accept: text/xml` headers for query specifications).
 - Automatic and custom mapping strategies for changing Webi data sources.
-- Integrity and docstring coverage for all 46 FastMCP tools.
+- Integrity and docstring coverage for all 47 FastMCP tools.
+- Intelligent diagnostics error signature clustering, multi-cause ranking, and Pydantic validation.
+
 
 ### Running Tests Locally
 ```bash

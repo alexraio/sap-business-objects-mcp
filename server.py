@@ -676,5 +676,46 @@ def get_categories() -> List[Dict[str, str]]:
         raise RuntimeError(f"Failed to get categories: {str(e)}")
 
 
+# =============================================================================
+# 8. Intelligent Diagnostics & Batch Health Monitoring
+# =============================================================================
+
+
+@mcp.tool()
+def diagnose_batch_failures(
+    hours_back: int = 12,
+    kind: str = "All",
+    folder_id: Optional[str] = None,
+    max_instances: int = 100,
+) -> Dict[str, Any]:
+    """
+    Intelligent Diagnostics Agent: Scans, deduplicates, and diagnoses nocturnal batch execution failures
+    for Web Intelligence reports and Publications (SI_SCHEDULE_STATUS = 3).
+
+    Performs automated clustering by error signature and delivers a structured Root Cause Analysis (RCA)
+    with up to 3 ranked probable causes and actionable remediation steps for the system administrator.
+
+    Args:
+        hours_back: Time window in hours to look back (default: 12, covering overnight runs).
+        kind: Object type to analyze ('Webi', 'Publication', or 'All').
+        folder_id: Optional InfoStore folder ID to restrict the diagnostic scan.
+        max_instances: Maximum number of failed instances to fetch and sample (default: 100).
+
+    Returns:
+        Structured JSON dictionary matching BatchDiagnosticsReport contract with executive summary,
+        cluster breakdown, and top-3 ranked causes with operational guidance.
+    """
+    try:
+        report = parser.diagnostic.diagnose_batch(
+            hours_back=hours_back,
+            kind=kind,
+            folder_id=folder_id,
+            max_instances=max_instances,
+        )
+        return report.model_dump(mode="json")
+    except Exception as e:
+        raise RuntimeError(f"Intelligent diagnostics scan failed: {str(e)}")
+
+
 if __name__ == "__main__":
     mcp.run()

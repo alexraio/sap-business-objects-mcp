@@ -9,9 +9,9 @@ import server
 
 class TestServerToolRegistration:
     def test_total_registered_tools_count(self):
-        """Verifies that all 46 enterprise MCP tools are properly registered on FastMCP."""
+        """Verifies that all 47 enterprise MCP tools are properly registered on FastMCP."""
         tools = server.mcp._tool_manager._tools
-        assert len(tools) == 46, f"Expected exactly 46 registered tools, got {len(tools)}"
+        assert len(tools) == 47, f"Expected exactly 47 registered tools, got {len(tools)}"
 
     def test_essential_tools_present(self):
         tools = server.mcp._tool_manager._tools
@@ -71,6 +71,8 @@ class TestServerToolRegistration:
             "delete_folder",
             "get_webi_docs",
             "get_categories",
+            # Intelligent Diagnostics
+            "diagnose_batch_failures",
         ]
         for t in expected_tools:
             assert t in tools, f"Missing tool in server: {t}"
@@ -95,3 +97,26 @@ class TestServerToolRegistration:
         result = server.logout.fn()
         assert "Logout successful" in result
         mock_logoff.assert_called_once()
+
+    @patch.object(server.parser.diagnostic, "diagnose_batch")
+    def test_diagnose_batch_failures_tool_execution(self, mock_diagnose):
+        from core.models import BatchDiagnosticsReport
+
+        mock_report = BatchDiagnosticsReport(
+            scan_timestamp="2026-10-21T06:00:00Z",
+            hours_back=12,
+            kind="All",
+            total_failed_instances=0,
+            clusters_count=0,
+            is_truncated=False,
+            clusters=[],
+            executive_summary="All batch executions completed successfully.",
+        )
+        mock_diagnose.return_value = mock_report
+
+        res = server.diagnose_batch_failures.fn(hours_back=12, kind="All")
+        assert isinstance(res, dict)
+        assert res["total_failed_instances"] == 0
+        assert res["clusters_count"] == 0
+        assert "successfully" in res["executive_summary"]
+        mock_diagnose.assert_called_once_with(hours_back=12, kind="All", folder_id=None, max_instances=100)

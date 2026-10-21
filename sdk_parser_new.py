@@ -16,6 +16,7 @@ from core.exceptions import (
     BOEProcessingError,
 )
 from services.admin_service import AdminService
+from services.diagnostic_service import DiagnosticService
 from services.infostore_service import InfostoreService
 from services.schedule_service import ScheduleService
 from services.universe_service import UniverseService
@@ -52,6 +53,7 @@ class BOESDKParser:
         self.schedule = ScheduleService(self.client)
         self.admin = AdminService(self.client)
         self.infostore = InfostoreService(self.client)
+        self.diagnostic = DiagnosticService(self.client)
 
     # =========================================================================
     # Compatibility Properties
