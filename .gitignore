@@ -45,3 +45,8 @@ htmlcov/
 
 # Logs & temporary files
 *.log
+
+# Private notes & local checklists
+TODO.md
+TODO*.md
+
