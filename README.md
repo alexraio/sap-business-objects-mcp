@@ -107,27 +107,54 @@ git clone https://github.com/your-username/BO_MCP.git
 cd BO_MCP
 ```
 
-### 2. Environment Configuration
+### 2. Authentication Configuration
 
-Copy the sample environment file to create your local `.env`:
+The MCP server supports two credential methods, resolved by priority:
+
+#### Option A (Recommended for Enterprise): Secure OS Keyring (Zero-Plaintext)
+
+Store credentials directly in your operating system's native encrypted keychain (**macOS Keychain**, **Windows Credential Manager**, or **Linux SecretService**). Passwords are never written to disk in plaintext or logged.
+
+1. Run the interactive configuration wizard:
+   ```bash
+   python server.py configure
+   ```
+   *(Prompts for API URL, Username, and Password with masked input via `getpass`)*
+
+2. Manage or test stored credentials:
+   ```bash
+   python server.py status    # Check active resolved credentials
+   python server.py test      # Test stored credentials against the live SAP BO server
+   python server.py clear     # Remove credentials from the OS Keyring
+   ```
+
+3. **Manual OS Keyring Configuration (No Python/CLI required)**:
+   You or your IT administrator can also add the credential directly in the OS GUI:
+   - **macOS (Keychain Access)**: Add a new password item with service `sap-business-objects-mcp`, your SAP username, and password.
+   - **Windows (Credential Manager)**: Under *Windows Credentials -> Add a generic credential*, specify Internet or network address `sap-business-objects-mcp`, your username, and password.
+   - **Linux (Seahorse / SecretService)**: Add an item under default keyring with service `sap-business-objects-mcp`.
+
+#### Option B (Development / Testing): Local `.env` File
+
+For local development or automated CI/CD pipelines, you can provide credentials via `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Configure your SAP BusinessObjects server URL and credentials in `.env`:
-
 ```env
 # SAP BusinessObjects REST API Configuration (BI 4.3 SP5)
 SAP_BO_REST_API_URL="http://your-bo-host:8080/biprws"
 
-# Authentication Credentials
+# Authentication Credentials (Priority 1 if defined)
 SAP_BO_USERNAME="Administrator"
 SAP_BO_PASSWORD="YourPasswordHere"
 ```
 
 > [!IMPORTANT]
-> The `.env` file is excluded from git via `.gitignore`. Never commit actual SAP credentials to source control.
+> - **Resolution Priority:** If `.env` contains credentials, they take precedence (Priority 1). If `.env` is absent or incomplete, the server automatically reads from the secure OS Keyring (Priority 2).
+> - If no credentials exist anywhere, the server starts cleanly without crashing and guides the user via tool response messages to run `python server.py configure`.
+
 
 ### 3. Install Dependencies
 

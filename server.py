@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 
+from core.session import SessionManager
 from sdk_parser_new import BOESDKParser
 
 # Load environment variables relative to this script directory
@@ -13,13 +14,15 @@ load_dotenv(Path(__file__).parent / ".env")
 # Initialize FastMCP Server
 mcp = FastMCP("SAP Business Objects")
 
-# Parse configuration
+# Initialize SessionManager & Default Session
+session_manager = SessionManager()
+default_session = session_manager.get_or_create_session("default")
+parser: BOESDKParser = default_session.parser
+
+# Parse fallback configuration
 api_url = os.getenv("SAP_BO_REST_API_URL")
 username_env = os.getenv("SAP_BO_USERNAME")
 password_env = os.getenv("SAP_BO_PASSWORD")
-
-# Initialize parser instance
-parser = BOESDKParser(base_url=api_url) if api_url else BOESDKParser()
 
 
 # =============================================================================
@@ -32,13 +35,18 @@ def login(username: Optional[str] = None, password: Optional[str] = None) -> str
     """
     Log in to the SAP BusinessObjects BI Platform.
     Establishes an active enterprise session and acquires a logon token (X-SAP-LogonToken).
-    If username/password are omitted, values from .env are used automatically.
+    If username/password are omitted, values from .env or OS Keyring are resolved automatically.
     """
-    user = username or username_env
-    pwd = password or password_env
+    resolved_creds = session_manager.credential_provider.get_credentials() if (not username or not password) else None
+
+    user = username or (resolved_creds.username if resolved_creds else None) or os.getenv("SAP_BO_USERNAME")
+    pwd = password or (resolved_creds.get_password() if resolved_creds else None) or os.getenv("SAP_BO_PASSWORD")
 
     if not user or not pwd:
-        return "Login failed: Missing credentials. Provide username/password or configure SAP_BO_USERNAME and SAP_BO_PASSWORD in .env"
+        return (
+            "Login failed: Missing credentials. Please provide username/password, "
+            "configure .env, or run 'python server.py configure' to securely store credentials in your OS Keyring."
+        )
 
     try:
         parser.set_logon_token(user, pwd)
@@ -718,4 +726,12 @@ def diagnose_batch_failures(
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import sys
+
+    # Support CLI subcommands for credential management
+    if len(sys.argv) > 1 and sys.argv[1] in ("configure", "setup", "test", "clear", "status"):
+        from core.auth.cli import main as auth_cli_main
+
+        sys.exit(auth_cli_main(sys.argv[1:]))
+    else:
+        mcp.run()

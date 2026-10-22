@@ -91,6 +91,27 @@ class TestServerToolRegistration:
         assert "Login successful for user 'test_admin'" in result
         mock_set_token.assert_called_once_with("test_admin", "test_password")
 
+    @patch.object(server.parser, "set_logon_token")
+    def test_login_tool_auto_resolve_success(self, mock_set_token):
+        from pydantic import SecretStr
+
+        from core.auth.models import AuthCredentials
+
+        mock_creds = AuthCredentials(username="keyring_user", password=SecretStr("keyring_pass"))
+        with patch.object(server.session_manager.credential_provider, "get_credentials", return_value=mock_creds):
+            mock_set_token.return_value = "TOKEN_KEYRING"
+            result = server.login.fn()
+            assert "Login successful for user 'keyring_user'" in result
+            mock_set_token.assert_called_once_with("keyring_user", "keyring_pass")
+
+    def test_login_tool_missing_credentials_guidance(self, monkeypatch):
+        monkeypatch.delenv("SAP_BO_USERNAME", raising=False)
+        monkeypatch.delenv("SAP_BO_PASSWORD", raising=False)
+        with patch.object(server.session_manager.credential_provider, "get_credentials", return_value=None):
+            result = server.login.fn()
+            assert "Login failed: Missing credentials" in result
+            assert "python server.py configure" in result
+
     @patch.object(server.parser, "bo_logoff")
     def test_logout_tool_execution(self, mock_logoff):
         mock_logoff.return_value = True
