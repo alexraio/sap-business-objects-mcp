@@ -103,6 +103,31 @@ class TestKeyringCredentialProvider:
 
         assert creds is None
 
+    @patch("keyring.get_password")
+    def test_auto_discovery_from_os(self, mock_get_password, monkeypatch):
+        monkeypatch.delenv("SAP_BO_USERNAME", raising=False)
+        monkeypatch.delenv("SAP_BO_PASSWORD", raising=False)
+
+        provider = KeyringCredentialProvider(service_name="test_service")
+        provider._read_metadata_config = MagicMock(return_value={})
+        provider._discover_username_from_os = MagicMock(return_value="discovered_user")
+
+        def mock_pwd_side_effect(service, user):
+            if user == "__active_user__":
+                return None
+            if user == "discovered_user":
+                return "discovered_pass"
+            return None
+
+        mock_get_password.side_effect = mock_pwd_side_effect
+
+        creds = provider.get_credentials()
+        assert creds is not None
+        assert creds.username == "discovered_user"
+        assert creds.get_password() == "discovered_pass"
+        provider._discover_username_from_os.assert_called_once()
+
+
 
 class TestChainedCredentialProvider:
     def test_chained_precedence_env_over_keyring(self, monkeypatch):

@@ -6,6 +6,9 @@ Implements hierarchical resolution: Environment Variables / .env -> OS Keyring -
 import json
 import logging
 import os
+import re
+import subprocess
+import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional
@@ -93,6 +96,61 @@ class KeyringCredentialProvider(CredentialProvider):
                 logger.warning(f"Failed to read auth config metadata from {path}: {e}")
         return {}
 
+    def _discover_username_from_os(self) -> Optional[str]:
+        """
+        Auto-discovers the username stored under this service from the OS Keyring.
+        Supports macOS Keychain, Linux SecretService, and Windows Credential Manager.
+        """
+        # 1. Try keyring.get_credential
+        try:
+            if hasattr(keyring, "get_credential"):
+                cred = keyring.get_credential(self.service_name, None)
+                if cred and cred.username:
+                    return str(cred.username).strip()
+        except Exception:
+            pass
+
+        # 2. On macOS (darwin), query security find-generic-password
+        if sys.platform == "darwin":
+            try:
+                res = subprocess.run(
+                    ["security", "find-generic-password", "-s", self.service_name],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=3,
+                )
+                if res.returncode == 0 and res.stdout:
+                    # Match quoted string: "acct"<blob>="username"
+                    m_str = re.search(r'"acct"<blob>="([^"]+)"', res.stdout)
+                    if m_str:
+                        return m_str.group(1).strip()
+                    # Match hex string: "acct"<blob>=0x...
+                    m_hex = re.search(r'"acct"<blob>=0x([0-9a-fA-F]+)', res.stdout)
+                    if m_hex:
+                        try:
+                            return bytes.fromhex(m_hex.group(1)).decode("utf-8").strip()
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.debug(f"macOS Keychain auto-discovery notice: {e}")
+
+        # 3. On Linux, query SecretStorage if D-Bus is available
+        elif sys.platform.startswith("linux"):
+            try:
+                import secretstorage
+
+                bus = secretstorage.dbus_init()
+                collection = secretstorage.get_default_collection(bus)
+                for item in collection.search_items({"service": self.service_name}):
+                    user = item.get_attributes().get("username") or item.get_label()
+                    if user:
+                        return str(user).strip()
+            except Exception as e:
+                logger.debug(f"Linux SecretStorage auto-discovery notice: {e}")
+
+        return None
+
     def get_credentials(self) -> Optional[AuthCredentials]:
         try:
             # 1. Determine username, api_url, auth_type
@@ -105,16 +163,9 @@ class KeyringCredentialProvider(CredentialProvider):
             if not username:
                 username = keyring.get_password(self.service_name, "__active_user__")
 
-            # Or try get_credential if supported by backend
-            if not username and hasattr(keyring, "get_credential"):
-                cred = keyring.get_credential(self.service_name, None)
-                if cred and cred.username and cred.password:
-                    return AuthCredentials(
-                        username=cred.username,
-                        password=SecretStr(cred.password),
-                        api_url=api_url,
-                        auth_type=auth_type,
-                    )
+            # If still not known, auto-discover account from OS Keyring
+            if not username:
+                username = self._discover_username_from_os()
 
             if not username:
                 return None
