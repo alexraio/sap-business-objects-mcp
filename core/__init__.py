@@ -2,6 +2,13 @@
 Core networking, authentication, and exception handling for SAP BusinessObjects.
 """
 
+from .auth import (
+    AuthCredentials,
+    ChainedCredentialProvider,
+    CredentialProvider,
+    EnvCredentialProvider,
+    KeyringCredentialProvider,
+)
 from .exceptions import (
     BOEAuthError,
     BOEError,
@@ -15,6 +22,7 @@ from .models import (
     FailureCategory,
     PotentialCause,
 )
+from .session import SessionManager, UserSession
 
 __all__ = [
     "BOEError",
@@ -26,4 +34,11 @@ __all__ = [
     "PotentialCause",
     "ClusterDiagnosis",
     "BatchDiagnosticsReport",
+    "AuthCredentials",
+    "CredentialProvider",
+    "EnvCredentialProvider",
+    "KeyringCredentialProvider",
+    "ChainedCredentialProvider",
+    "SessionManager",
+    "UserSession",
 ]

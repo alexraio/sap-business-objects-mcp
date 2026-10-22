@@ -37,6 +37,7 @@ Thumbs.db
 .ruff_cache/
 .mypy_cache/
 .coverage
+coverage.xml
 htmlcov/
 
 # Local agent / workspace configurations (contains absolute user paths & emails)
@@ -45,3 +46,8 @@ htmlcov/
 
 # Logs & temporary files
 *.log
+
+# Private notes & local checklists
+TODO.md
+TODO*.md
+
