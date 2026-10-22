@@ -128,7 +128,6 @@ class TestKeyringCredentialProvider:
         provider._discover_username_from_os.assert_called_once()
 
 
-
 class TestChainedCredentialProvider:
     def test_chained_precedence_env_over_keyring(self, monkeypatch):
         # Env provides credentials
