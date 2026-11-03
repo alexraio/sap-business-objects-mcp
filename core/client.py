@@ -72,8 +72,10 @@ class BOEClient:
     def _get_auth_template(self) -> Dict[str, Any]:
         """Retrieves logon template structure from the BI platform."""
         url = f"{self.bip_url}/logon/long"
+        # Ensure stale/expired session tokens are never sent when requesting a fresh logon template
+        clean_headers = {k: v for k, v in self.headers.items() if k != "X-SAP-LogonToken"}
         try:
-            resp = self.session.get(url, headers=self.headers, verify=self.verify_ssl, timeout=self.timeout)
+            resp = self.session.get(url, headers=clean_headers, verify=self.verify_ssl, timeout=self.timeout)
             resp.raise_for_status()
             return resp.json()
         except requests.exceptions.RequestException as e:
@@ -83,6 +85,8 @@ class BOEClient:
         """
         Authenticates against SAP BusinessObjects and stores the X-SAP-LogonToken.
         """
+        self.headers.pop("X-SAP-LogonToken", None)
+        self.logon_token = None
         template = self._get_auth_template()
         template["userName"] = username
         template["password"] = password
