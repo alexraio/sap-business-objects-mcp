@@ -192,6 +192,23 @@ class BOESDKParser:
         except Exception:
             return False
 
+    def export_webi_doc(
+        self,
+        webi_doc_id: str,
+        export_format: str = "pdf",
+        report_id: Optional[str] = None,
+        output_path: Optional[str] = None,
+        refresh: bool = False,
+    ) -> Dict[str, Any]:
+        """Exports a Webi document or report tab to PDF, Excel (xlsx), or CSV."""
+        return self.webi.export_webi_doc(
+            webi_doc_id=webi_doc_id,
+            export_format=export_format,
+            report_id=report_id,
+            output_path=output_path,
+            refresh=refresh,
+        )
+
     def get_doc_parameters(self, webi_doc_id: str) -> List[Dict[str, Any]]:
         """Retrieves prompt parameters required by a document."""
         return self.webi.get_doc_parameters(webi_doc_id)

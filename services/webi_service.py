@@ -5,6 +5,7 @@ tabular data extraction from report blocks, data provider SQL, and formulas.
 """
 
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from core.client import BOEClient
@@ -105,6 +106,122 @@ class WebiService:
         self.client.delete(url)
         return True
 
+    def export_webi_doc(
+        self,
+        webi_doc_id: str,
+        export_format: str = "pdf",
+        report_id: Optional[str] = None,
+        output_path: Optional[str] = None,
+        refresh: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Exports a Web Intelligence document or a specific report tab to PDF, Excel (.xlsx), or CSV.
+
+        Args:
+            webi_doc_id: ID of the Web Intelligence document to export.
+            export_format: Target format ('pdf', 'xlsx', 'excel', 'csv', or 'all').
+            report_id: Optional report tab ID. If omitted for PDF/Excel, exports the full document.
+                       For CSV, if omitted, the first report tab is resolved automatically.
+            output_path: Destination file or directory path. If omitted, files are saved in 'exports/'.
+            refresh: If True, triggers a document refresh within the active session before exporting.
+
+        Returns:
+            Dictionary with export status, generated file path(s), byte size, and format details.
+        """
+        fmt = export_format.strip().lower()
+        if fmt == "excel":
+            fmt = "xlsx"
+
+        valid_formats = ("pdf", "xlsx", "csv", "all")
+        if fmt not in valid_formats:
+            raise ValueError(
+                f"Unsupported export format '{export_format}'. Supported formats: 'pdf', 'xlsx' (or 'excel'), 'csv', 'all'."
+            )
+
+        # Trigger in-session document refresh if requested
+        if refresh:
+            self.refresh_webi_doc(webi_doc_id=webi_doc_id)
+
+        if fmt == "all":
+            results = []
+            for sub_fmt in ("pdf", "xlsx", "csv"):
+                res = self.export_webi_doc(
+                    webi_doc_id=webi_doc_id,
+                    export_format=sub_fmt,
+                    report_id=report_id,
+                    output_path=output_path,
+                    refresh=False,
+                )
+                results.append(res)
+            return {
+                "webi_doc_id": webi_doc_id,
+                "status": "success",
+                "exports": results,
+            }
+
+        mime_types = {
+            "pdf": "application/pdf",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "csv": "text/csv",
+        }
+        accept_header = mime_types[fmt]
+        ext = f".{fmt}"
+
+        # Resolve URL endpoint
+        resolved_report_id = report_id
+        if fmt == "csv":
+            # CSV requires report tab ID in Raylight
+            if not resolved_report_id:
+                try:
+                    reps = self.get_reports(webi_doc_id)
+                    if reps and isinstance(reps, list) and len(reps) > 0:
+                        resolved_report_id = str(reps[0].get("id", "1"))
+                    else:
+                        resolved_report_id = "1"
+                except Exception:
+                    resolved_report_id = "1"
+            url = f"{self.client.webi_url}/documents/{webi_doc_id}/reports/{resolved_report_id}"
+        else:
+            if resolved_report_id:
+                url = f"{self.client.webi_url}/documents/{webi_doc_id}/reports/{resolved_report_id}"
+            else:
+                url = f"{self.client.webi_url}/documents/{webi_doc_id}"
+
+        # Request export stream from Raylight
+        content = self.client.get(url, headers={"Accept": accept_header}, raw_bytes=True)
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        elif not isinstance(content, (bytes, bytearray)):
+            content = str(content).encode("utf-8")
+
+        # Resolve output destination
+        if output_path:
+            out = Path(output_path)
+            # If path points to an existing directory or ends with a slash, treat as output dir
+            if (out.exists() and out.is_dir()) or output_path.endswith(("/", "\\")):
+                out.mkdir(parents=True, exist_ok=True)
+                rep_suffix = f"_rep{resolved_report_id}" if resolved_report_id else ""
+                target_file = out / f"{webi_doc_id}{rep_suffix}{ext}"
+            else:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                target_file = out
+        else:
+            default_dir = Path("exports")
+            default_dir.mkdir(parents=True, exist_ok=True)
+            rep_suffix = f"_rep{resolved_report_id}" if resolved_report_id else ""
+            target_file = default_dir / f"{webi_doc_id}{rep_suffix}{ext}"
+
+        target_file.write_bytes(content)
+
+        return {
+            "status": "success",
+            "webi_doc_id": webi_doc_id,
+            "format": fmt,
+            "report_id": resolved_report_id,
+            "file_path": str(target_file.resolve()),
+            "file_size_bytes": len(content),
+        }
+
     # =========================================================================
     # 2. Parameters, Prompts & Document Refresh
     # =========================================================================
@@ -146,7 +263,11 @@ class WebiService:
         Retrieves the List of Values (LOV) allowed for a specific constrained parameter.
         """
         url = f"{self.client.webi_url}/documents/{webi_doc_id}/parameters/{parameter_id}/values?page={page}&pagesize={pagesize}"
-        resp = self.client.get(url)
+        try:
+            resp = self.client.get(url)
+        except Exception:
+            # Return empty list if the parameter is unconstrained or has no LOV
+            return []
         values: List[Any] = []
         if isinstance(resp, dict) and "values" in resp:
             val_items = resp["values"].get("value", [])
@@ -577,52 +698,69 @@ class WebiService:
         Extracts structured tabular data rows from a table or chart block in a report tab.
         Limits rows to max_rows (default 1000) to protect LLM token limits.
         """
-        url = f"{self.client.webi_url}/documents/{webi_doc_id}/reports/{report_id}/elements/{element_id}/data"
+        # Primary Raylight endpoint is /dataset, with fallback to legacy /data
+        url = f"{self.client.webi_url}/documents/{webi_doc_id}/reports/{report_id}/elements/{element_id}/dataset"
         try:
             resp = self.client.get(url)
-        except Exception as e:
-            return {
-                "webi_doc_id": webi_doc_id,
-                "report_id": report_id,
-                "element_id": element_id,
-                "total_rows_returned": 0,
-                "columns": [],
-                "data": [],
-                "note": f"Element {element_id} does not expose a tabular dataset (it may be a layout cell, PageZone, or chart without table data): {str(e)}",
-            }
+        except Exception:
+            fallback_url = (
+                f"{self.client.webi_url}/documents/{webi_doc_id}/reports/{report_id}/elements/{element_id}/data"
+            )
+            try:
+                resp = self.client.get(fallback_url)
+            except Exception as e:
+                return {
+                    "webi_doc_id": webi_doc_id,
+                    "report_id": report_id,
+                    "element_id": element_id,
+                    "total_rows_returned": 0,
+                    "columns": [],
+                    "data": [],
+                    "note": f"Element {element_id} does not expose a tabular dataset (it may be a layout cell, PageZone, or chart without table data): {str(e)}",
+                }
 
         if not isinstance(resp, dict):
             return {"raw_data": str(resp)}
 
-        # Parse Raylight dataset structure (columns / rows)
+        # Parse Raylight dataset structure (metadata/value or columns/column)
         dataset = resp.get("dataset", resp)
         rows_data: List[Dict[str, Any]] = []
         headers: List[str] = []
 
-        # Extract column metadata
-        if "columns" in dataset and "column" in dataset["columns"]:
+        # Extract column metadata (supports Raylight metadata.value and columns.column)
+        if "metadata" in dataset and "value" in dataset["metadata"]:
+            meta_cols = dataset["metadata"]["value"]
+            if isinstance(meta_cols, dict):
+                meta_cols = [meta_cols]
+            headers = [c.get("$") if isinstance(c, dict) else str(c) for c in meta_cols]
+        elif "columns" in dataset and "column" in dataset["columns"]:
             cols = dataset["columns"]["column"]
             if isinstance(cols, dict):
                 cols = [cols]
-            headers = [c.get("name") or c.get("@name") or f"Col_{i}" for i, c in enumerate(cols)]
+            headers = [c.get("name") or c.get("@name") or c.get("$") or f"Col_{i}" for i, c in enumerate(cols)]
 
-        # Extract row values
-        if "rows" in dataset and "row" in dataset["rows"]:
-            raw_rows = dataset["rows"]["row"]
-            if isinstance(raw_rows, dict):
-                raw_rows = [raw_rows]
+        # Extract row values (supports Raylight row.value and rows.row.cell)
+        raw_rows = []
+        if "row" in dataset:
+            raw_rows = dataset["row"] if isinstance(dataset["row"], list) else [dataset["row"]]
+        elif "rows" in dataset and "row" in dataset["rows"]:
+            raw_rows = dataset["rows"]["row"] if isinstance(dataset["rows"]["row"], list) else [dataset["rows"]["row"]]
 
-            for r_idx, r in enumerate(raw_rows[:max_rows]):
-                cell_vals = r.get("cell", [])
-                if isinstance(cell_vals, dict):
-                    cell_vals = [cell_vals]
+        for r_idx, r in enumerate(raw_rows[:max_rows]):
+            cell_vals = (
+                r.get("value")
+                if isinstance(r, dict) and "value" in r
+                else (r.get("cell", []) if isinstance(r, dict) else r)
+            )
+            if not isinstance(cell_vals, list):
+                cell_vals = [cell_vals]
 
-                row_dict: Dict[str, Any] = {}
-                for c_idx, cell in enumerate(cell_vals):
-                    val = cell.get("$") if isinstance(cell, dict) else str(cell)
-                    col_name = headers[c_idx] if c_idx < len(headers) else f"Column_{c_idx + 1}"
-                    row_dict[col_name] = val
-                rows_data.append(row_dict)
+            row_dict: Dict[str, Any] = {}
+            for c_idx, cell in enumerate(cell_vals):
+                val = cell.get("$") if isinstance(cell, dict) else str(cell)
+                col_name = headers[c_idx] if c_idx < len(headers) else f"Column_{c_idx + 1}"
+                row_dict[col_name] = val
+            rows_data.append(row_dict)
 
         return {
             "webi_doc_id": webi_doc_id,

@@ -8,7 +8,7 @@
 [![CI](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml)
 [![SAP BO](https://img.shields.io/badge/SAP%20BusinessObjects-BI%204.3%20SP5-orange.svg)](https://www.sap.com)
 
-A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 47 specialized enterprise tools directly from natural language prompts.
+A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 48 specialized enterprise tools directly from natural language prompts.
 
 ---
 
@@ -28,7 +28,7 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [System Flow Diagram](#system-flow-diagram)
   - [Domain Services Breakdown](#domain-services-breakdown)
   - [Authentication & Session Lifecycle](#authentication--session-lifecycle)
-- [Available MCP Tools Reference (47 Tools)](#available-mcp-tools-reference-47-tools)
+- [Available MCP Tools Reference (48 Tools)](#available-mcp-tools-reference-48-tools)
   - [1. Authentication (2 Tools)](#1-authentication-2-tools)
   - [2. Universes & Semantic Layer (5 Tools)](#2-universes--semantic-layer-5-tools)
   - [3. Web Intelligence Documents & Lifecycle (5 Tools)](#3-web-intelligence-documents--lifecycle-5-tools)
@@ -77,7 +77,7 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
 | :--- | :--- | :--- |
 | **Runtime** | Python | `>= 3.13` (Modern Python 3.13+ typing, dataclasses, pattern matching) |
 | **Package Management** | Astral `uv` | Fast virtual environment & dependency management via `pyproject.toml` |
-| **MCP Framework** | `fastmcp` | `2.13.1` (FastMCP 2.0 Generation 2, 47 registered tools) |
+| **MCP Framework** | `fastmcp` | `2.13.1` (FastMCP 2.0 Generation 2, 48 registered tools) |
 | **MCP Specification** | `mcp` | `1.22.0` (Standard Model Context Protocol) |
 | **HTTP Engine** | `requests` | `2.32.5` persistent HTTP keep-alive session with custom timeout |
 | **Security & Secrets** | `keyring` | `25.7.0` (Native OS Keychain / Credential Manager integration) |
@@ -182,7 +182,7 @@ pip install -r requirements.txt
 
 ### 4. Verify MCP Server Installation
 
-Run FastMCP inspection to verify that all 47 tools are registered:
+Run FastMCP inspection to verify that all 48 tools are registered:
 
 ```bash
 uv run fastmcp inspect server.py
@@ -197,7 +197,7 @@ Server
   Generation:   2
 
 Components
-  Tools:        47
+  Tools:        48
   Prompts:      0
   Resources:    0
   Templates:    0
@@ -238,7 +238,7 @@ BO_MCP/
 │   ├── schedule_service.py    # Schedules: recurring jobs, instance history, failure diagnostics
 │   ├── universe_service.py    # Universes: UNX/UNV, semantic hierarchy (/sl/v1), lineage
 │   └── webi_service.py        # Web Intelligence: prompts, LOVs, refresh, tables, formulas, SQL
-├── server.py                  # FastMCP server exposing 47 typed MCP tools + Auth CLI subcommands
+├── server.py                  # FastMCP server exposing 48 typed MCP tools + Auth CLI subcommands
 ├── sdk_parser_new.py          # Unified Facade ensuring 100% backward compatibility
 ├── .agents/
 │   └── mcp_config.json        # Workspace configuration for Antigravity IDE
@@ -260,7 +260,7 @@ BO_MCP/
                                v
 +-------------------------------------------------------------+
 |                    FastMCP Server (server.py)               |
-|  - Exposes 47 MCP Tools with docstrings & typed schemas     |
+|  - Exposes 48 MCP Tools with docstrings & typed schemas     |
 |  - Subcommands: configure, status, test, clear              |
 +------------------------------+------------------------------+
                                |
@@ -298,7 +298,7 @@ BO_MCP/
 
 ---
 
-## Available MCP Tools Reference (47 Tools)
+## Available MCP Tools Reference (48 Tools)
 
 
 ### 1. Authentication (2 Tools)
@@ -316,7 +316,7 @@ BO_MCP/
 | `get_universe_related_reports` | `universe_id` | Queries the CMS to find all Webi reports referencing the universe (`SI_SL_DOCUMENTS` / `SI_WEBI`). |
 | `get_universe_connection_id` | `universe_id` | Retrieves the Data Connection ID associated with the universe. |
 
-### 3. Web Intelligence Documents & Lifecycle (5 Tools)
+### 3. Web Intelligence Documents & Lifecycle (6 Tools)
 | Tool | Parameters | Description |
 | :--- | :--- | :--- |
 | `get_documents` | `page=1`, `pagesize=50` | Retrieves a paginated list of Webi documents from the repository. |
@@ -324,6 +324,7 @@ BO_MCP/
 | `get_doc_properties` | `webi_doc_id` | Retrieves document configuration properties (refreshOnOpen, autoRefresh, etc.). |
 | `save_webi_doc` | `webi_doc_id`, `webi_doc_name` | Saves/overwrites a Webi document while preserving user comments. |
 | `delete_webi_doc` | `webi_doc_id` | Permanently deletes a Webi document from the CMS repository. |
+| `export_webi_doc` | `webi_doc_id`, `export_format='pdf'`, `report_id?`, `output_path?`, `refresh=False` | Exports a Webi document or report tab to PDF, Excel (.xlsx), or CSV with optional in-session refresh. |
 
 ### 4. Webi Prompts, Parameters & Refresh (3 Tools)
 | Tool | Parameters | Description |
@@ -444,7 +445,7 @@ The `diagnose_batch_failures` tool automates nocturnal batch monitoring and inci
 ### 1. Google Antigravity IDE
 
 #### Workspace Configuration
-Create a `.agents/mcp_config.json` file in your workspace (see [`mcp_config.example.json`](file:///mcp_config.example.json)). When you open this folder in Antigravity IDE, all 47 tools are registered automatically:
+Create a `.agents/mcp_config.json` file in your workspace (see [`mcp_config.example.json`](file:///mcp_config.example.json)). When you open this folder in Antigravity IDE, all 48 tools are registered automatically:
 
 ```json
 {
@@ -546,9 +547,9 @@ With credentials stored securely in your OS Keyring, **no passwords or usernames
 | `uv run python server.py status` | Inspect currently active resolved credentials and target URL |
 | `uv run python server.py test` | Verify stored credentials live against the SAP BO REST platform |
 | `uv run python server.py clear` | Securely delete credentials from OS Keyring and local config metadata |
-| `uv run pytest` | Run offline unit test suite with coverage report (89 tests) |
+| `uv run pytest` | Run offline unit test suite with coverage report (97 tests) |
 | `uv run ruff check .` | Run fast linting and style validation |
-| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 47 tools) |
+| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 48 tools) |
 | `uv run fastmcp dev server.py` | Launch interactive web inspector for live debugging |
 | `uv run python server.py` | Run the MCP server in STDIO mode |
 
@@ -565,7 +566,7 @@ Because SAP BusinessObjects Enterprise (BOE) requires a complex, proprietary on-
 - SAP BI platform specific error payloads (`WSR 00999`, invalid session tokens).
 - REST content negotiation (JSON vs. XML `Accept: text/xml` headers for query specifications).
 - Automatic and custom mapping strategies for changing Webi data sources.
-- Integrity and docstring coverage for all 47 FastMCP tools.
+- Integrity and docstring coverage for all 48 FastMCP tools.
 - Intelligent diagnostics error signature clustering, multi-cause ranking, and Pydantic validation.
 
 

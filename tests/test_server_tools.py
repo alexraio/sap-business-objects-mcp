@@ -9,9 +9,9 @@ import server
 
 class TestServerToolRegistration:
     def test_total_registered_tools_count(self):
-        """Verifies that all 47 enterprise MCP tools are properly registered on FastMCP."""
+        """Verifies that all 48 enterprise MCP tools are properly registered on FastMCP."""
         tools = server.mcp._tool_manager._tools
-        assert len(tools) == 47, f"Expected exactly 47 registered tools, got {len(tools)}"
+        assert len(tools) == 48, f"Expected exactly 48 registered tools, got {len(tools)}"
 
     def test_essential_tools_present(self):
         tools = server.mcp._tool_manager._tools
@@ -31,6 +31,7 @@ class TestServerToolRegistration:
             "get_doc_properties",
             "save_webi_doc",
             "delete_webi_doc",
+            "export_webi_doc",
             # Prompts
             "get_doc_parameters",
             "get_parameter_lov",

@@ -72,8 +72,10 @@ class BOEClient:
     def _get_auth_template(self) -> Dict[str, Any]:
         """Retrieves logon template structure from the BI platform."""
         url = f"{self.bip_url}/logon/long"
+        # Ensure stale/expired session tokens are never sent when requesting a fresh logon template
+        clean_headers = {k: v for k, v in self.headers.items() if k != "X-SAP-LogonToken"}
         try:
-            resp = self.session.get(url, headers=self.headers, verify=self.verify_ssl, timeout=self.timeout)
+            resp = self.session.get(url, headers=clean_headers, verify=self.verify_ssl, timeout=self.timeout)
             resp.raise_for_status()
             return resp.json()
         except requests.exceptions.RequestException as e:
@@ -83,6 +85,8 @@ class BOEClient:
         """
         Authenticates against SAP BusinessObjects and stores the X-SAP-LogonToken.
         """
+        self.headers.pop("X-SAP-LogonToken", None)
+        self.logon_token = None
         template = self._get_auth_template()
         template["userName"] = username
         template["password"] = password
@@ -155,6 +159,7 @@ class BOEClient:
         data: Optional[Any] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[int] = None,
+        raw_bytes: bool = False,
     ) -> Any:
         """
         Executes an HTTP request with uniform error handling, header injection, and response parsing.
@@ -176,25 +181,37 @@ class BOEClient:
                 verify=self.verify_ssl,
                 timeout=req_timeout,
             )
-            return self._handle_response(resp)
+            return self._handle_response(resp, raw_bytes=raw_bytes)
         except requests.exceptions.Timeout as e:
             raise BOEError(f"Request to {url} timed out after {req_timeout}s: {str(e)}")
         except requests.exceptions.RequestException as e:
             raise BOEError(f"Request failed: {str(e)}")
 
-    def _handle_response(self, resp: requests.Response) -> Any:
-        """Inspects status codes and extracts JSON or text payload."""
+    def _handle_response(self, resp: requests.Response, raw_bytes: bool = False) -> Any:
+        """Inspects status codes and extracts JSON, binary bytes, or text payload."""
         status = resp.status_code
 
         if 200 <= status < 300:
             if not resp.content:
-                return {}
+                return b"" if raw_bytes else {}
+            if raw_bytes:
+                return resp.content
             content_type = resp.headers.get("Content-Type", "")
             if "application/json" in content_type:
                 try:
                     return resp.json()
                 except ValueError:
                     return resp.text
+            # Return raw bytes for binary stream types (PDF, Excel, zip, octet-stream)
+            binary_types = (
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument",
+                "application/vnd.ms-excel",
+                "application/octet-stream",
+                "application/zip",
+            )
+            if any(b in content_type for b in binary_types):
+                return resp.content
             return resp.text
 
         # Error cases

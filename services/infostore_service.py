@@ -60,8 +60,13 @@ class InfostoreService:
         """
         Creates a new folder under the specified parent folder ID.
         """
-        url = f"{self.client.bip_url}/infostore/{parent_folder_id}/children"
-        payload = {"entry": {"name": name, "description": description or "", "type": "Folder"}}
+        url = f"{self.client.bip_url}/v1/folders/folder"
+        payload = {
+            "keywords": "",
+            "name": name,
+            "description": description or "",
+            "parentid": str(parent_folder_id),
+        }
         resp = self.client.post(url, json_data=payload)
         return resp
 
@@ -69,7 +74,7 @@ class InfostoreService:
         """
         Permanently deletes a folder from the InfoStore repository.
         """
-        url = f"{self.client.bip_url}/infostore/{folder_id}"
+        url = f"{self.client.bip_url}/v1/folders/{folder_id}"
         self.client.delete(url)
         return True
 
