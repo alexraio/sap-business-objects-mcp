@@ -263,7 +263,11 @@ class WebiService:
         Retrieves the List of Values (LOV) allowed for a specific constrained parameter.
         """
         url = f"{self.client.webi_url}/documents/{webi_doc_id}/parameters/{parameter_id}/values?page={page}&pagesize={pagesize}"
-        resp = self.client.get(url)
+        try:
+            resp = self.client.get(url)
+        except Exception:
+            # Return empty list if the parameter is unconstrained or has no LOV
+            return []
         values: List[Any] = []
         if isinstance(resp, dict) and "values" in resp:
             val_items = resp["values"].get("value", [])
