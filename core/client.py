@@ -159,6 +159,7 @@ class BOEClient:
         data: Optional[Any] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[int] = None,
+        raw_bytes: bool = False,
     ) -> Any:
         """
         Executes an HTTP request with uniform error handling, header injection, and response parsing.
@@ -180,25 +181,37 @@ class BOEClient:
                 verify=self.verify_ssl,
                 timeout=req_timeout,
             )
-            return self._handle_response(resp)
+            return self._handle_response(resp, raw_bytes=raw_bytes)
         except requests.exceptions.Timeout as e:
             raise BOEError(f"Request to {url} timed out after {req_timeout}s: {str(e)}")
         except requests.exceptions.RequestException as e:
             raise BOEError(f"Request failed: {str(e)}")
 
-    def _handle_response(self, resp: requests.Response) -> Any:
-        """Inspects status codes and extracts JSON or text payload."""
+    def _handle_response(self, resp: requests.Response, raw_bytes: bool = False) -> Any:
+        """Inspects status codes and extracts JSON, binary bytes, or text payload."""
         status = resp.status_code
 
         if 200 <= status < 300:
             if not resp.content:
-                return {}
+                return b"" if raw_bytes else {}
+            if raw_bytes:
+                return resp.content
             content_type = resp.headers.get("Content-Type", "")
             if "application/json" in content_type:
                 try:
                     return resp.json()
                 except ValueError:
                     return resp.text
+            # Return raw bytes for binary stream types (PDF, Excel, zip, octet-stream)
+            binary_types = (
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument",
+                "application/vnd.ms-excel",
+                "application/octet-stream",
+                "application/zip",
+            )
+            if any(b in content_type for b in binary_types):
+                return resp.content
             return resp.text
 
         # Error cases

@@ -209,6 +209,38 @@ def delete_webi_doc(webi_doc_id: str) -> str:
         return f"Error deleting document: {str(e)}"
 
 
+@mcp.tool()
+def export_webi_doc(
+    webi_doc_id: str,
+    export_format: str = "pdf",
+    report_id: Optional[str] = None,
+    output_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Exports a Web Intelligence document or a specific report tab to PDF, Excel (.xlsx), or CSV.
+
+    Args:
+        webi_doc_id: ID of the Web Intelligence document to export.
+        export_format: Target format: 'pdf', 'xlsx' (or 'excel'), 'csv', or 'all' to export all formats.
+        report_id: Optional report tab ID. If omitted for PDF/Excel, exports the full document.
+                   For CSV, if omitted, the first report tab is exported automatically.
+        output_path: Optional destination file or directory path. If omitted, files are saved
+                     in the 'exports/' directory.
+
+    Returns:
+        Dict containing export metadata, status, target file path(s), and file size in bytes.
+    """
+    try:
+        return parser.export_webi_doc(
+            webi_doc_id=webi_doc_id,
+            export_format=export_format,
+            report_id=report_id,
+            output_path=output_path,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Failed to export document {webi_doc_id} as {export_format}: {str(e)}")
+
+
 # =============================================================================
 # 4. Webi Prompts, Parameters & Refresh
 # =============================================================================
