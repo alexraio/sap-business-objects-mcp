@@ -46,6 +46,7 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [2. Antigravity CLI (`agy`)](#2-antigravity-cli-agy)
   - [3. FastMCP Development Inspector (Web UI)](#3-fastmcp-development-inspector-web-ui)
   - [4. Claude Desktop & Other MCP Hosts](#4-claude-desktop--other-mcp-hosts)
+- [Agent Skill: `sap-business-objects`](#agent-skill-sap-business-objects)
 - [Available Scripts & Commands](#available-scripts--commands)
 - [Testing & Verification](#testing--verification)
 - [Contributing Guidelines](#contributing-guidelines)
@@ -535,6 +536,21 @@ With credentials stored securely in your OS Keyring, **no passwords or usernames
   }
 }
 ```
+
+---
+
+## Agent Skill: `sap-business-objects`
+
+The repository includes a production-grade operational skill located at [`.agents/skills/sap-business-objects`](file:///.agents/skills/sap-business-objects), designed for **Google Antigravity**, **Gemini CLI (`agy`)**, and compatible autonomous AI agents.
+
+### Core Capabilities:
+- **Autonomous Intent Routing:** Matches user prompts to the exact MCP tools across 7 operational domains (universes, Webi documents, prompts, tabular data, exports, CMS administration, and batch failure RCA).
+- **Safe-by-Default Action Tiers:** Enforces confirmation protocols for destructive actions (e.g., `delete_webi_doc`, `terminate_session`, `set_user_status`) while running safe queries autonomously.
+- **Dedicated Operational Runbooks:**
+  - [`semantic_and_webi.md`](file:///.agents/skills/sap-business-objects/references/semantic_and_webi.md): Step-by-step guidance for universes, SQL extraction, table block extraction, and in-session refreshed PDF/Excel/CSV exports.
+  - [`cms_admin_and_security.md`](file:///.agents/skills/sap-business-objects/references/cms_admin_and_security.md): Virtual table querying (`CI_INFOOBJECTS`, `CI_SYSTEMOBJECTS`, `CI_APPOBJECTS`), session monitoring, and user/group administration.
+  - [`batch_diagnostics_and_schedules.md`](file:///.agents/skills/sap-business-objects/references/batch_diagnostics_and_schedules.md): Root cause analysis (RCA) for nocturnal batch failures, error clustering, and strict IDT connection testing rules.
+- **Repository Rules ([`project_rules.md`](file:///.agents/rules/project_rules.md)):** Defines architectural standards and enforces that SAP BusinessObjects relational connection testing is performed exclusively via the Information Design Tool (IDT), never the Central Management Console (CMC).
 
 ---
 
