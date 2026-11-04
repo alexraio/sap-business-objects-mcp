@@ -216,6 +216,21 @@ class TestWebiServiceExport:
         assert "xlsx" in formats
         assert "csv" in formats
 
+    def test_export_with_refresh_trigger(self, webi_service: WebiService, mock_client: MagicMock, tmp_path):
+        webi_service.refresh_webi_doc = MagicMock(return_value={"status": "refreshed"})
+        mock_client.get.return_value = b"%PDF-refreshed"
+        out_file = tmp_path / "refreshed.pdf"
+
+        res = webi_service.export_webi_doc(
+            webi_doc_id="23856",
+            export_format="pdf",
+            output_path=str(out_file),
+            refresh=True,
+        )
+
+        assert res["status"] == "success"
+        webi_service.refresh_webi_doc.assert_called_once_with(webi_doc_id="23856")
+
     def test_export_invalid_format(self, webi_service: WebiService):
         with pytest.raises(ValueError, match="Unsupported export format"):
             webi_service.export_webi_doc(webi_doc_id="23856", export_format="docx")

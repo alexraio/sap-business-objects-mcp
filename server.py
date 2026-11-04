@@ -215,6 +215,7 @@ def export_webi_doc(
     export_format: str = "pdf",
     report_id: Optional[str] = None,
     output_path: Optional[str] = None,
+    refresh: bool = False,
 ) -> Dict[str, Any]:
     """
     Exports a Web Intelligence document or a specific report tab to PDF, Excel (.xlsx), or CSV.
@@ -226,6 +227,7 @@ def export_webi_doc(
                    For CSV, if omitted, the first report tab is exported automatically.
         output_path: Optional destination file or directory path. If omitted, files are saved
                      in the 'exports/' directory.
+        refresh: If True, refreshes all document data providers in-session before generating the export.
 
     Returns:
         Dict containing export metadata, status, target file path(s), and file size in bytes.
@@ -236,6 +238,7 @@ def export_webi_doc(
             export_format=export_format,
             report_id=report_id,
             output_path=output_path,
+            refresh=refresh,
         )
     except Exception as e:
         raise RuntimeError(f"Failed to export document {webi_doc_id} as {export_format}: {str(e)}")

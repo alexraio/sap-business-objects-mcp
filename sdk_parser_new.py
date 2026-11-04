@@ -198,6 +198,7 @@ class BOESDKParser:
         export_format: str = "pdf",
         report_id: Optional[str] = None,
         output_path: Optional[str] = None,
+        refresh: bool = False,
     ) -> Dict[str, Any]:
         """Exports a Webi document or report tab to PDF, Excel (xlsx), or CSV."""
         return self.webi.export_webi_doc(
@@ -205,6 +206,7 @@ class BOESDKParser:
             export_format=export_format,
             report_id=report_id,
             output_path=output_path,
+            refresh=refresh,
         )
 
     def get_doc_parameters(self, webi_doc_id: str) -> List[Dict[str, Any]]:

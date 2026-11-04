@@ -112,6 +112,7 @@ class WebiService:
         export_format: str = "pdf",
         report_id: Optional[str] = None,
         output_path: Optional[str] = None,
+        refresh: bool = False,
     ) -> Dict[str, Any]:
         """
         Exports a Web Intelligence document or a specific report tab to PDF, Excel (.xlsx), or CSV.
@@ -122,6 +123,7 @@ class WebiService:
             report_id: Optional report tab ID. If omitted for PDF/Excel, exports the full document.
                        For CSV, if omitted, the first report tab is resolved automatically.
             output_path: Destination file or directory path. If omitted, files are saved in 'exports/'.
+            refresh: If True, triggers a document refresh within the active session before exporting.
 
         Returns:
             Dictionary with export status, generated file path(s), byte size, and format details.
@@ -136,6 +138,10 @@ class WebiService:
                 f"Unsupported export format '{export_format}'. Supported formats: 'pdf', 'xlsx' (or 'excel'), 'csv', 'all'."
             )
 
+        # Trigger in-session document refresh if requested
+        if refresh:
+            self.refresh_webi_doc(webi_doc_id=webi_doc_id)
+
         if fmt == "all":
             results = []
             for sub_fmt in ("pdf", "xlsx", "csv"):
@@ -144,6 +150,7 @@ class WebiService:
                     export_format=sub_fmt,
                     report_id=report_id,
                     output_path=output_path,
+                    refresh=False,
                 )
                 results.append(res)
             return {
