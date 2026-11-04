@@ -76,9 +76,7 @@ Reports with dynamic prompts require answering parameters before refresh:
 3. **Execute Document Refresh:**
    Call `refresh_webi_doc(document_id, parameters)` where `parameters` is a structured dictionary:
    ```python
-   {
-       "ParameterNameOrID": ["SelectedValue1", "SelectedValue2"]
-   }
+   {"ParameterNameOrID": ["SelectedValue1", "SelectedValue2"]}
    ```
    If no parameters are required, call `refresh_webi_doc(document_id)`.
 
