@@ -228,9 +228,14 @@ BO_MCP/
 │   ├── client.py              # BOEClient: HTTP keep-alive session, token lifecycle, error handling
 │   ├── exceptions.py          # Custom domain exceptions (BOEAuthError, BOEProcessingError, etc.)
 │   └── models.py              # Pydantic v2 schemas: BatchDiagnosticsReport, ClusterDiagnosis, etc.
-├── docs/
-│   ├── enterprise_authentication_and_session_design.md # Enterprise Auth & Session Isolation specs
-│   └── intelligent_diagnostics_agent_design.md        # Intelligent Diagnostics & RCA engine specs
+├── wiki/                      # Self-contained LLM-Wiki (Karpathy + Google OKF specification)
+│   ├── index.md               # Global OKF catalog & progressive disclosure entry point
+│   ├── log.md                 # Chronological append-only operation log
+│   ├── raw/                   # Immutable primary sources & original design RFCs
+│   ├── architecture/          # System design, Enterprise Auth, Sessions & Diagnostics specs
+│   ├── sap_bo/                # SAP BO 4.3 SP5 domain rules (CMS SQL, IDT vs CMC, Raylight)
+│   ├── tools/                 # Complete MCP tool catalogs & Tier 1/Tier 2 safety matrices
+│   └── troubleshooting/       # Error code triage runbooks (IES 10901, WIS 30553, ORA-01017)
 ├── services/
 │   ├── __init__.py
 │   ├── admin_service.py       # CMS Admin: generic SQL queries, users, groups, active sessions

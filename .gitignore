@@ -31,6 +31,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+**/.obsidian/workspace*.json
 
 # Testing, typing & linting caches
 .pytest_cache/
