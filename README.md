@@ -506,17 +506,40 @@ uv run python server.py --transport sse --host 0.0.0.0 --port 8000
 - **Windows Server (`Windows Service`):** Run [`deploy/windows_service_setup.ps1`](deploy/windows_service_setup.ps1) in an elevated PowerShell prompt to register `SAPBusinessObjectsMCP` via `NSSM` or `sc.exe`.
 
 ### 3. Connecting Your Local MCP Client to the Remote Server
-In your local `.agents/mcp_config.json` or `~/.gemini/config/mcp_config.json`, point to the remote endpoint:
+
+You can connect your desktop MCP host (Google Antigravity IDE, Claude Desktop, Cursor) to the remote SAP BO server using two approaches:
+
+#### Option A: Local Keyring Bridge (Zero-Password / Automatic Keyring Integration)
+The recommended approach for macOS and Windows desktops. The lightweight bridge [`deploy/client_bridge.py`](deploy/client_bridge.py) runs locally on your Mac/Windows PC, resolves your credentials from your **macOS Keychain** or **Windows Credential Manager** (`python deploy/client_bridge.py configure`), and connects to the remote server over Streamable HTTP, authenticating your session automatically:
+
 ```json
 {
   "mcpServers": {
-    "sap-business-objects-remote": {
+    "sap-business-objects": {
+      "command": "uv",
+      "args": [
+        "--directory", "/path/to/BO_MCP",
+        "run", "python", "deploy/client_bridge.py",
+        "--remote-url", "http://your-bo-server:8000"
+      ]
+    }
+  }
+}
+```
+*Zero passwords in chat, zero plaintext secrets on the remote server.*
+
+#### Option B: Direct HTTP Endpoint
+Point your MCP client directly to the remote URL:
+```json
+{
+  "mcpServers": {
+    "sap-business-objects": {
       "url": "http://your-bo-server:8000/mcp"
     }
   }
 }
 ```
-Once connected, call `login(username="...", password="...")` in chat: your session is isolated by `ctx.session_id`, and if your account belongs to `Administrators`, all 7 local Log and Auditing DB tools are unlocked automatically.
+Once connected, either invoke `login(username="...", password="...")` in chat or configure fallback credentials in the remote server's `.env`. All tools are executed remotely on the SAP BO host.
 
 ### 4. Remote Troubleshooting (`get_mcp_server_diagnostics` & `python server.py doctor`)
 If any subsystem fails while `bo-mcp` is running remotely on the SAP BO server:

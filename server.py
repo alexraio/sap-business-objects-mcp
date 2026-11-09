@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -11,6 +12,8 @@ from fastmcp.server.dependencies import get_context, get_http_headers
 from core.self_diagnostics import collect_server_diagnostics, configure_server_logging
 from core.session import SessionManager, UserSession
 from sdk_parser_new import BOESDKParser
+
+logger = logging.getLogger("BOEServer")
 
 # Load environment variables relative to this script directory
 load_dotenv(Path(__file__).parent / ".env")
@@ -61,12 +64,19 @@ def get_active_session(require_admin: bool = False) -> UserSession:
     # Support HTTP header pass-through for remote enterprise gateways (Strategy B)
     header_token = headers.get("x-sap-logontoken")
     header_user = headers.get("x-sap-username")
+    header_pwd = headers.get("x-sap-password")
+
     if header_token and session.parser.client.logon_token != header_token:
         session.parser.client.logon_token = header_token
         session.parser.client.headers["X-SAP-LogonToken"] = header_token
         if header_user:
             session.authenticated_user = header_user
             session.is_admin = True if header_user.strip().lower() == "administrator" else None
+    elif header_user and header_pwd and not session.is_authenticated:
+        try:
+            session.authenticate(username=header_user, password=header_pwd)
+        except Exception as e:
+            logger.warning(f"Failed auto-login from headers for user '{header_user}': {e}")
 
     if require_admin:
         session.ensure_admin()

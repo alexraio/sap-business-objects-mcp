@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "sap-business-objects": {
+    "sap-business-objects-local": {
       "command": "uv",
       "args": [
         "--directory",
@@ -10,6 +10,22 @@
         "server.py"
       ],
       "env": {}
+    },
+    "sap-business-objects-remote-bridge": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/BO_MCP",
+        "run",
+        "python",
+        "deploy/client_bridge.py",
+        "--remote-url",
+        "http://your-bo-host:8000"
+      ],
+      "env": {}
+    },
+    "sap-business-objects-remote-direct": {
+      "url": "http://your-bo-host:8000/mcp"
     }
   }
 }
