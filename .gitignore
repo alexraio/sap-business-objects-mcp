@@ -52,4 +52,6 @@ exports/
 # Private notes & local checklists
 TODO.md
 TODO*.md
+QUICKSTART.md
+QUICKSTART*.md
 
