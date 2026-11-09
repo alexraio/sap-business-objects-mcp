@@ -55,3 +55,7 @@ TODO*.md
 QUICKSTART.md
 QUICKSTART*.md
 
+# TLS certificates & private keys
+certs/
+*.pem
+*.key

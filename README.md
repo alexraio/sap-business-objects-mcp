@@ -474,6 +474,11 @@ When `bo-mcp` runs co-located on the SAP BusinessObjects host, `LogService` stre
 | `MCP_TRANSPORT` | Optional | `stdio` | Transport mode (`stdio`, `streamable-http`, `sse`) | `streamable-http` |
 | `MCP_HOST` | Optional | `0.0.0.0` | Bind address when running in `streamable-http` or `sse` mode | `0.0.0.0` |
 | `MCP_PORT` | Optional | `8000` | Bind port when running in `streamable-http` or `sse` mode | `8000` |
+| `MCP_SSL_CERTFILE` | Optional | `None` | PEM certificate (chain) file; with `MCP_SSL_KEYFILE` enables **HTTPS** | `/etc/bo-mcp/tls/server.pem` |
+| `MCP_SSL_KEYFILE` | Optional | `None` | PEM private key file for HTTPS | `/etc/bo-mcp/tls/server.key` |
+| `MCP_SSL_KEYFILE_PASSWORD` | Optional | `None` | Passphrase of an encrypted private key | `KeyPass` |
+| `SAP_BO_CA_FILE` | Optional | `None` | *(Client bridge)* CA bundle / self-signed cert to trust for `https://` URLs | `/path/to/ca.pem` |
+| `SAP_BO_TLS_INSECURE` | Optional | `false` | *(Client bridge)* Disable TLS verification, **development only** | `true` |
 | `SAP_BO_LOG_DIR` | Optional | Auto-detected | Path to local SAP BusinessObjects `logging/` directory | `/opt/bobj/sap_bobj/logging` |
 | `SAP_BO_AUDIT_DSN` | Optional | `None` | System ODBC DSN name for the SAP BO Auditing Database | `BI4_Audit_DSN_1651343769` |
 | `SAP_BO_AUDIT_USER` | Optional | `None` | Auditing Database username | `dba` |
@@ -496,6 +501,21 @@ uv run python server.py --transport streamable-http --host 0.0.0.0 --port 8000
 # Or Server-Sent Events (exposes http://<bo-host>:8000/sse)
 uv run python server.py --transport sse --host 0.0.0.0 --port 8000
 ```
+
+#### Optional: HTTPS (TLS)
+HTTP and HTTPS are both supported; the scheme is chosen purely by configuration. Without certificate options the server serves plain HTTP (a warning is logged when binding to a non-loopback address, because credentials travel in `x-sap-*` headers). To enable HTTPS pass a certificate and key (or set `MCP_SSL_CERTFILE` / `MCP_SSL_KEYFILE` in `.env`, which also works for the systemd/Windows service):
+```bash
+uv run python server.py --transport streamable-http --host 0.0.0.0 --port 8443 \
+    --ssl-certfile /etc/bo-mcp/tls/server.pem --ssl-keyfile /etc/bo-mcp/tls/server.key
+```
+The server refuses to start if only one of the two files is given or a file is missing (it never silently falls back to HTTP).
+
+- **Production:** use a certificate issued by your corporate CA (or terminate TLS on a reverse proxy such as nginx/IIS in front of `bo-mcp`).
+- **Development / test:** generate a self-signed certificate (cross-platform, no `openssl` needed):
+  ```bash
+  uv run python deploy/generate_dev_cert.py --host <bo-host-or-ip>   # -> certs/dev-cert.pem, certs/dev-key.pem
+  ```
+  Copy **only** `dev-cert.pem` to your workstation and trust it in the bridge with `--ca-file` (see below). `certs/`, `*.pem` and `*.key` are git-ignored.
 
 ### 2. Installing as a Native System Service
 - **Linux (`systemd`):** Copy [`deploy/bo-mcp.service`](deploy/bo-mcp.service) to `/etc/systemd/system/bo-mcp.service` (pre-configured to run as the `bobj` OS user and load `ODBCINI` and `LD_LIBRARY_PATH` from `/opt/bobj/sap_bobj/enterprise_xi40/odbc.ini`), then run:
@@ -527,6 +547,13 @@ The recommended approach for macOS and Windows desktops. The lightweight bridge 
 }
 ```
 *Zero passwords in chat, zero plaintext secrets on the remote server.*
+
+For HTTPS use an `https://` URL. If the server certificate is signed by a private CA or is self-signed, trust it explicitly:
+```json
+"--remote-url", "https://your-bo-server:8443",
+"--ca-file", "/path/to/ca-or-dev-cert.pem"
+```
+`--insecure` (or `SAP_BO_TLS_INSECURE=true`) disables certificate verification and is meant for development only. The bridge logs a warning when your password is about to be sent over plain `http://` to a non-loopback host.
 
 #### Option B: Direct HTTP Endpoint
 Point your MCP client directly to the remote URL:

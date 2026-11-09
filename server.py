@@ -1079,7 +1079,48 @@ def parse_server_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default=int(os.getenv("MCP_PORT", "8000")),
         help="Bind port for HTTP/SSE transport (default: 8000 or MCP_PORT env var)",
     )
+    arg_parser.add_argument(
+        "--ssl-certfile",
+        default=os.getenv("MCP_SSL_CERTFILE", "").strip() or None,
+        help="PEM certificate (chain) file. Together with --ssl-keyfile enables HTTPS "
+        "(default: MCP_SSL_CERTFILE env var). Omit both to serve plain HTTP.",
+    )
+    arg_parser.add_argument(
+        "--ssl-keyfile",
+        default=os.getenv("MCP_SSL_KEYFILE", "").strip() or None,
+        help="PEM private key file for HTTPS (default: MCP_SSL_KEYFILE env var)",
+    )
+    arg_parser.add_argument(
+        "--ssl-keyfile-password",
+        default=os.getenv("MCP_SSL_KEYFILE_PASSWORD") or None,
+        help="Passphrase of an encrypted private key (prefer the MCP_SSL_KEYFILE_PASSWORD env var)",
+    )
     return arg_parser.parse_args(argv)
+
+
+def build_ssl_config(
+    certfile: Optional[str],
+    keyfile: Optional[str],
+    keyfile_password: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Builds the uvicorn TLS options from certificate/key paths.
+
+    Returns an empty dict when TLS is not requested (plain HTTP).
+    Raises ValueError on incomplete or unreadable configuration so the server never
+    silently falls back to plain HTTP when HTTPS was intended.
+    """
+    if not certfile and not keyfile:
+        return {}
+    if not certfile or not keyfile:
+        raise ValueError("HTTPS requires both --ssl-certfile and --ssl-keyfile (only one was provided).")
+    for label, path in (("certificate", certfile), ("private key", keyfile)):
+        if not os.path.isfile(path):
+            raise ValueError(f"TLS {label} file not found: {path}")
+    config: Dict[str, Any] = {"ssl_certfile": certfile, "ssl_keyfile": keyfile}
+    if keyfile_password:
+        config["ssl_keyfile_password"] = keyfile_password
+    return config
 
 
 def run_server(argv: Optional[List[str]] = None) -> None:
@@ -1105,9 +1146,29 @@ def run_server(argv: Optional[List[str]] = None) -> None:
 
     parsed = parse_server_args(args_list)
     if parsed.transport in ("sse", "streamable-http", "http"):
+        try:
+            ssl_config = build_ssl_config(parsed.ssl_certfile, parsed.ssl_keyfile, parsed.ssl_keyfile_password)
+        except ValueError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(2)
+
+        scheme = "https" if ssl_config else "http"
+        if not ssl_config and parsed.host not in ("127.0.0.1", "localhost", "::1"):
+            logger.warning(
+                "Serving PLAIN HTTP on %s: SAP credentials sent via x-sap-* headers travel unencrypted. "
+                "Enable HTTPS with --ssl-certfile/--ssl-keyfile (or a TLS reverse proxy) outside trusted networks.",
+                parsed.host,
+            )
+        logger.info("Starting remote MCP server (%s) on %s://%s:%s", parsed.transport, scheme, parsed.host, parsed.port)
+
         session_manager.remote_mode = True
         session_manager.start_background_cleanup(interval_seconds=300)
-        mcp.run(transport=parsed.transport, host=parsed.host, port=parsed.port)
+        mcp.run(
+            transport=parsed.transport,
+            host=parsed.host,
+            port=parsed.port,
+            uvicorn_config=ssl_config or None,
+        )
     else:
         session_manager.remote_mode = False
         mcp.run()

@@ -24,11 +24,14 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import ssl
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
+from urllib.parse import urlparse
 
 import anyio
+import httpx
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.server.stdio import stdio_server
@@ -81,6 +84,56 @@ def resolve_desktop_headers(
     return headers
 
 
+LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
+def resolve_tls_verify(ca_file: Optional[str] = None, insecure: bool = False) -> Union[bool, ssl.SSLContext]:
+    """
+    Resolves the httpx `verify` argument for the remote connection.
+
+    - insecure=True disables certificate verification (development only).
+    - ca_file trusts a private CA bundle or a self-signed server certificate.
+    - otherwise the system trust store is used.
+    """
+    if insecure:
+        logger.warning("TLS certificate verification is DISABLED (--insecure). Use for development only.")
+        return False
+    if ca_file:
+        if not os.path.isfile(ca_file):
+            raise FileNotFoundError(f"CA bundle not found: {ca_file}")
+        return ssl.create_default_context(cafile=ca_file)
+    return True
+
+
+def warn_if_insecure_transport(remote_url: str, has_credentials: bool) -> None:
+    """Warns when credentials are about to travel over plain HTTP to a non-loopback host."""
+    parsed = urlparse(remote_url.strip())
+    if parsed.scheme == "http" and has_credentials and (parsed.hostname or "") not in LOOPBACK_HOSTS:
+        logger.warning(
+            "Remote URL uses plain HTTP: your SAP BO password is sent unencrypted in request headers. "
+            "Use https:// (see QUICKSTART/README) unless this is a trusted network."
+        )
+
+
+def make_httpx_client_factory(verify: Union[bool, ssl.SSLContext] = True) -> Any:
+    """Returns an MCP-compatible httpx client factory honouring the TLS `verify` setting."""
+
+    def factory(
+        headers: Optional[Dict[str, str]] = None,
+        timeout: Optional[httpx.Timeout] = None,
+        auth: Optional[httpx.Auth] = None,
+    ) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            headers=headers,
+            timeout=timeout or httpx.Timeout(30.0, read=300.0),
+            auth=auth,
+            verify=verify,
+            follow_redirects=True,
+        )
+
+    return factory
+
+
 def format_endpoint_url(base_url: str, transport: str) -> str:
     """Normalizes the target remote URL to the FastMCP endpoint (/mcp or /sse)."""
     clean_url = base_url.strip().rstrip("/")
@@ -121,6 +174,7 @@ async def run_bridge(
     transport: str = "streamable-http",
     headers: Optional[Dict[str, str]] = None,
     timeout: float = 30.0,
+    verify: Union[bool, ssl.SSLContext] = True,
 ) -> None:
     """
     Main asynchronous bridge loop:
@@ -130,6 +184,7 @@ async def run_bridge(
     """
     endpoint = format_endpoint_url(remote_url, transport)
     request_headers = headers or {}
+    client_factory = make_httpx_client_factory(verify)
 
     logger.info(f"Connecting local desktop stdio to remote bo-mcp ({transport}) at: {endpoint}")
 
@@ -139,6 +194,7 @@ async def run_bridge(
                 url=endpoint,
                 headers=request_headers,
                 timeout=timeout,
+                httpx_client_factory=client_factory,
             ) as (remote_in, remote_out, get_session_id):
                 session_id = get_session_id()
                 if session_id:
@@ -164,6 +220,7 @@ async def run_bridge(
                 url=endpoint,
                 headers=request_headers,
                 timeout=timeout,
+                httpx_client_factory=client_factory,
             ) as (remote_in, remote_out):
                 logger.info("Established remote SSE connection.")
                 async with anyio.create_task_group() as tg:
@@ -204,6 +261,18 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=30.0,
         help="HTTP connection timeout in seconds (default: 30.0)",
     )
+    parser.add_argument(
+        "--ca-file",
+        default=os.getenv("SAP_BO_CA_FILE", "").strip() or None,
+        help="PEM CA bundle (or the self-signed server certificate) to trust for https:// URLs "
+        "(default: SAP_BO_CA_FILE env var)",
+    )
+    parser.add_argument(
+        "--insecure",
+        action="store_true",
+        default=os.getenv("SAP_BO_TLS_INSECURE", "").strip().lower() in ("1", "true", "yes"),
+        help="Disable TLS certificate verification (DEVELOPMENT ONLY)",
+    )
     return parser.parse_args(argv)
 
 
@@ -218,9 +287,11 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     parsed = parse_args(args_list)
     headers = resolve_desktop_headers()
+    warn_if_insecure_transport(parsed.remote_url, bool(headers))
 
     try:
-        anyio.run(run_bridge, parsed.remote_url, parsed.transport, headers, parsed.timeout)
+        verify = resolve_tls_verify(parsed.ca_file, parsed.insecure)
+        anyio.run(run_bridge, parsed.remote_url, parsed.transport, headers, parsed.timeout, verify)
     except KeyboardInterrupt:
         logger.info("Bridge stopped by user.")
     except Exception as e:
