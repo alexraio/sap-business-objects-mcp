@@ -26,6 +26,12 @@ class BOEAuthError(BOEError):
     pass
 
 
+class BOEPermissionError(BOEError):
+    """Raised when an authenticated user lacks required SAP BO Administrator privileges for restricted tools."""
+
+    pass
+
+
 class BOENotFoundError(BOEError):
     """Raised when a requested resource (document, universe, folder, user) is not found (HTTP 404)."""
 
@@ -40,5 +46,17 @@ class BOEProcessingError(BOEError):
 
 class BOEQueryError(BOEError):
     """Raised when a CMS SQL query fails to execute or syntax is invalid."""
+
+    pass
+
+
+class BOELogError(BOEError):
+    """Raised when local SAP BusinessObjects log inspection fails or violates path sandboxing."""
+
+    pass
+
+
+class BOEAuditDBError(BOEError):
+    """Raised when Auditing Database ODBC connectivity fails or a query violates read-only guardrails."""
 
     pass

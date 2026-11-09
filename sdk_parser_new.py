@@ -16,8 +16,10 @@ from core.exceptions import (
     BOEProcessingError,
 )
 from services.admin_service import AdminService
+from services.audit_service import AuditService
 from services.diagnostic_service import DiagnosticService
 from services.infostore_service import InfostoreService
+from services.log_service import LogService
 from services.schedule_service import ScheduleService
 from services.universe_service import UniverseService
 from services.webi_service import WebiService
@@ -25,7 +27,8 @@ from services.webi_service import WebiService
 
 class BOESDKParser:
     """
-    Unified Facade providing access to all SAP BusinessObjects BI Platform 4.3 SP5 REST capabilities.
+    Unified Facade providing access to all SAP BusinessObjects BI Platform 4.3 SP5 REST capabilities,
+    local server log inspection, and Auditing Database ODBC introspection.
     Delegates to modular domain services while maintaining 100% backward compatibility.
     """
 
@@ -53,7 +56,13 @@ class BOESDKParser:
         self.schedule = ScheduleService(self.client)
         self.admin = AdminService(self.client)
         self.infostore = InfostoreService(self.client)
-        self.diagnostic = DiagnosticService(self.client)
+        self.logs = LogService()
+        self.audit = AuditService()
+        self.diagnostic = DiagnosticService(
+            self.client,
+            log_service=self.logs,
+            audit_service=self.audit,
+        )
 
     # =========================================================================
     # Compatibility Properties
@@ -374,3 +383,84 @@ class BOESDKParser:
     def delete_instance(self, instance_id: str) -> bool:
         """Deletes an execution instance."""
         return self.schedule.delete_instance(instance_id)
+
+    # =========================================================================
+    # Local SAP BO Log Inspection & Auditing DB (Admin-Restricted)
+    # =========================================================================
+
+    def list_bo_logs(
+        self,
+        server_type: Optional[str] = None,
+        hours_back: int = 24,
+        max_files: int = 100,
+    ) -> Dict[str, Any]:
+        """Lists recent local SAP BusinessObjects server log files (.glf, .log, .trc)."""
+        return self.logs.list_log_files(server_type=server_type, hours_back=hours_back, max_files=max_files)
+
+    def search_bo_logs(
+        self,
+        pattern: str,
+        server_type: Optional[str] = None,
+        hours_back: int = 12,
+        severity: Optional[str] = None,
+        max_matches: int = 50,
+    ) -> Dict[str, Any]:
+        """Searches recent local SAP BusinessObjects log files for error codes, DocIDs, or regex patterns."""
+        return self.logs.search_logs(
+            pattern=pattern,
+            server_type=server_type,
+            hours_back=hours_back,
+            severity=severity,
+            max_matches=max_matches,
+        )
+
+    def get_bo_log_context(
+        self,
+        file_name: str,
+        line_number: int,
+        context_lines: int = 20,
+    ) -> Dict[str, Any]:
+        """Retrieves surrounding log lines around a specific line number in a SAP BO log file."""
+        return self.logs.get_log_context(
+            file_name=file_name,
+            line_number=line_number,
+            context_lines=context_lines,
+        )
+
+    def get_audit_failed_events(
+        self,
+        hours_back: int = 24,
+        event_type_id: Optional[int] = None,
+        max_rows: int = 100,
+    ) -> Dict[str, Any]:
+        """Retrieves failed SAP BO audit events from ADS_EVENT via ODBC."""
+        return self.audit.get_failed_events(
+            hours_back=hours_back,
+            event_type_id=event_type_id,
+            max_rows=max_rows,
+        )
+
+    def get_audit_heavy_reports(
+        self,
+        days_back: int = 7,
+        top_n: int = 20,
+    ) -> Dict[str, Any]:
+        """Identifies the slowest and heaviest reports recorded in ADS_EVENT via ODBC."""
+        return self.audit.get_heavy_reports(days_back=days_back, top_n=top_n)
+
+    def get_audit_user_activity(
+        self,
+        username: Optional[str] = None,
+        hours_back: int = 24,
+        max_rows: int = 100,
+    ) -> Dict[str, Any]:
+        """Retrieves recent user activity from ADS_EVENT via ODBC."""
+        return self.audit.get_user_activity(username=username, hours_back=hours_back, max_rows=max_rows)
+
+    def query_audit_db(
+        self,
+        sql_query: str,
+        max_rows: int = 200,
+    ) -> Dict[str, Any]:
+        """Executes a strictly read-only SELECT query against the SAP BO Auditing Database via ODBC."""
+        return self.audit.execute_query(sql_query=sql_query, max_rows=max_rows)

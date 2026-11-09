@@ -8,7 +8,7 @@
 [![CI](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/alexraio/sap-business-objects-mcp/actions/workflows/ci.yml)
 [![SAP BO](https://img.shields.io/badge/SAP%20BusinessObjects-BI%204.3%20SP5-orange.svg)](https://www.sap.com)
 
-A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, and Web Intelligence inspection capabilities to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server enables AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 48 specialized enterprise tools directly from natural language prompts.
+A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI Platform 4.3 SP5** administration, semantic analysis, Web Intelligence inspection, co-located `.glf` server log analysis, and direct ODBC Auditing Database introspection to AI coding assistants and autonomous agents. Built using **FastMCP 2.0** and the **SAP BI Platform REST Web Services (`biprws` and `raylight`)**, this server runs both **locally (`STDIO`)** and **remotely (`Streamable HTTP` / `SSE`)** on the SAP BusinessObjects host, enabling AI agents (such as **Google Antigravity IDE**, **Antigravity CLI `agy`**, Claude Desktop, and Cursor) to execute 56 specialized enterprise tools directly from natural language prompts.
 
 ---
 
@@ -28,7 +28,7 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [System Flow Diagram](#system-flow-diagram)
   - [Domain Services Breakdown](#domain-services-breakdown)
   - [Authentication & Session Lifecycle](#authentication--session-lifecycle)
-- [Available MCP Tools Reference (48 Tools)](#available-mcp-tools-reference-48-tools)
+- [Available MCP Tools Reference (56 Tools)](#available-mcp-tools-reference-56-tools)
   - [1. Authentication (2 Tools)](#1-authentication-2-tools)
   - [2. Universes & Semantic Layer (5 Tools)](#2-universes--semantic-layer-5-tools)
   - [3. Web Intelligence Documents & Lifecycle (5 Tools)](#3-web-intelligence-documents--lifecycle-5-tools)
@@ -39,8 +39,11 @@ A Model Context Protocol (**MCP**) server that exposes **SAP BusinessObjects BI 
   - [8. Schedules & Instance Diagnostics (4 Tools)](#8-schedules--instance-diagnostics-4-tools)
   - [9. InfoStore, Folders & Categories (6 Tools)](#9-infostore-folders--categories-6-tools)
   - [10. Intelligent Diagnostics & Batch Health Monitoring (1 Tool)](#10-intelligent-diagnostics--batch-health-monitoring-1-tool)
-
+  - [11. Local SAP BO Server Log Inspection — Admin-Only (3 Tools)](#11-local-sap-bo-server-log-inspection--admin-only-3-tools)
+  - [12. Auditing Database ODBC Introspection — Admin-Only (4 Tools)](#12-auditing-database-odbc-introspection--admin-only-4-tools)
+  - [13. MCP Server Self-Diagnostics & Remote Troubleshooting (1 Tool)](#13-mcp-server-self-diagnostics--remote-troubleshooting-1-tool)
 - [Environment Variables](#environment-variables)
+- [Co-Located Remote Deployment (Linux & Windows Server)](#co-located-remote-deployment-linux--windows-server)
 - [Client Integration Guide](#client-integration-guide)
   - [1. Google Antigravity IDE](#1-google-antigravity-ide)
   - [2. Antigravity CLI (`agy`)](#2-antigravity-cli-agy)
@@ -304,7 +307,7 @@ BO_MCP/
 
 ---
 
-## Available MCP Tools Reference (48 Tools)
+## Available MCP Tools Reference (56 Tools)
 
 
 ### 1. Authentication (2 Tools)
@@ -434,15 +437,91 @@ The `diagnose_batch_failures` tool automates nocturnal batch monitoring and inci
 > [!NOTE]
 > In SAP BusinessObjects 4.x, relational connection testing (`.cns` / `.cnx` for UNX) is supported exclusively through the **Information Design Tool (IDT)** (or Universe Design Tool for legacy `.unv`). The Central Management Console (CMC) does not provide a relational connection testing function.
 
+### 11. Local SAP BO Server Log Inspection — Admin-Only (3 Tools)
+When `bo-mcp` runs co-located on the SAP BusinessObjects host, `LogService` streams `.glf` (pipe-delimited Generic Log Format), `.log`, and `.trc` files in reverse order (64 KB chunks from EOF) without loading large trace files into RAM. Protected by strict path-traversal sandboxing (`SAP_BO_LOG_DIR`) and SAP BO `Administrators` RBAC.
+
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `list_bo_logs` | `server_type?`, `hours_back=24`, `max_files=100` | **[Admin-Only]** Lists recent SAP BO server log files (`.glf`, `.log`, `.trc`) grouped by component (`WebiProcessingServer`, `AdaptiveJobServer`, `CMS`, `WACS`). |
+| `search_bo_logs` | `pattern`, `server_type?`, `hours_back=12`, `severity?`, `max_matches=50` | **[Admin-Only]** Streams and searches recent `.glf`/`.log` files for error codes (`IES 10901`, `WIS 30553`, `ORA-01017`), CUIDs, or regex patterns. |
+| `get_bo_log_context` | `file_name`, `line_number`, `context_lines=20` | **[Admin-Only]** Retrieves surrounding lines before and after a specific 1-based line number to inspect full stack traces. |
+
+### 12. Auditing Database ODBC Introspection — Admin-Only (4 Tools)
+`AuditService` connects directly to the SAP BusinessObjects Auditing Database (`ADS_*` schema) via the host's native ODBC configuration (`pyodbc`, `readonly=True`), enforcing a strict `SELECT`/`WITH`-only SQL validator and RDBMS-agnostic row capping (`cursor.fetchmany`).
+
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_audit_failed_events` | `hours_back=24`, `event_type_id?`, `max_rows=100` | **[Admin-Only]** Queries `ADS_EVENT` for failed platform events (`Status_ID <> 0` or populated `Error_Code`). |
+| `get_audit_heavy_reports` | `days_back=7`, `top_n=20` | **[Admin-Only]** Identifies the slowest and heaviest reports in `ADS_EVENT` ranked by maximum and average `Duration_ms`. |
+| `get_audit_user_activity` | `username?`, `hours_back=24`, `max_rows=100` | **[Admin-Only]** Retrieves recent user logons, document views, refreshes, and exports from `ADS_EVENT`. |
+| `query_audit_db` | `sql_query`, `max_rows=200` | **[Admin-Only]** Executes a custom, strictly read-only `SELECT` query against `ADS_*` tables (multi-statement `;` and DML/DDL keywords are blocked). |
+
+### 13. MCP Server Self-Diagnostics & Remote Troubleshooting (1 Tool)
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `get_mcp_server_diagnostics` | `include_recent_logs=True`, `max_log_lines=50` | **Probes all 4 server subsystems** (OS/Runtime & RBAC session state, `biprws` HTTP reachability & latency, `SAP_BO_LOG_DIR` permissions, `pyodbc` drivers & live Auditing DB ping) plus sanitized internal `bo-mcp` logs from the in-memory ring buffer so an AI agent can diagnose remote server issues directly over MCP. |
+
 ---
 
 ## Environment Variables
 
 | Variable | Required? | Default | Description | Example |
 | :--- | :---: | :---: | :--- | :--- |
-| `SAP_BO_REST_API_URL` | **Yes** | `None` | URL to SAP BI Platform REST Web Services (`biprws`) | `http://boserver.corp:8080/biprws` |
-| `SAP_BO_USERNAME` | Optional | `None` | Default username for the `login` tool | `Administrator` |
-| `SAP_BO_PASSWORD` | Optional | `None` | Default password for the `login` tool | `SecretP@ssw0rd` |
+| `SAP_BO_REST_API_URL` | **Yes** | `None` | URL to SAP BI Platform REST Web Services (`biprws`) | `http://localhost:6405/biprws` |
+| `SAP_BO_USERNAME` | Optional | `None` | Default username for local `stdio` mode | `Administrator` |
+| `SAP_BO_PASSWORD` | Optional | `None` | Default password for local `stdio` mode | `SecretP@ssw0rd` |
+| `SAP_BO_ADMIN_GROUPS` | Optional | `Administrators` | Comma-separated SAP BO UserGroups authorized for Admin-only tools | `Administrators,BO_Ops` |
+| `MCP_TRANSPORT` | Optional | `stdio` | Transport mode (`stdio`, `streamable-http`, `sse`) | `streamable-http` |
+| `MCP_HOST` | Optional | `0.0.0.0` | Bind address when running in `streamable-http` or `sse` mode | `0.0.0.0` |
+| `MCP_PORT` | Optional | `8000` | Bind port when running in `streamable-http` or `sse` mode | `8000` |
+| `SAP_BO_LOG_DIR` | Optional | Auto-detected | Path to local SAP BusinessObjects `logging/` directory | `/opt/bobj/sap_bobj/logging` |
+| `SAP_BO_AUDIT_DSN` | Optional | `None` | System ODBC DSN name for the SAP BO Auditing Database | `BI4_Audit_DSN_1651343769` |
+| `SAP_BO_AUDIT_USER` | Optional | `None` | Auditing Database username | `dba` |
+| `SAP_BO_AUDIT_PASSWORD` | Optional | `None` | Auditing Database password (masked via `SecretStr`) | `AuditSecret` |
+| `SAP_BO_AUDIT_TIMEOUT` | Optional | `20` | Query timeout in seconds for Auditing DB ODBC connections | `20` |
+| `MCP_SERVER_LOG_FILE` | Optional | `None` | Optional file path for rotating internal `bo-mcp` server logs | `/var/log/bo-mcp/bo-mcp.log` |
+
+---
+
+## Co-Located Remote Deployment (Linux & Windows Server)
+
+You can use `bo-mcp` **both locally via `STDIO`** (on your laptop) and **remotely via `Streamable HTTP` or `SSE`** (installed directly on the SAP BusinessObjects server).
+
+### 1. Starting the Remote Server Manually
+On the SAP BusinessObjects machine (Linux or Windows):
+```bash
+# Streamable HTTP (Recommended for remote MCP clients, exposes http://<bo-host>:8000/mcp)
+uv run python server.py --transport streamable-http --host 0.0.0.0 --port 8000
+
+# Or Server-Sent Events (exposes http://<bo-host>:8000/sse)
+uv run python server.py --transport sse --host 0.0.0.0 --port 8000
+```
+
+### 2. Installing as a Native System Service
+- **Linux (`systemd`):** Copy [`deploy/bo-mcp.service`](deploy/bo-mcp.service) to `/etc/systemd/system/bo-mcp.service` (pre-configured to run as the `bobj` OS user and load `ODBCINI` and `LD_LIBRARY_PATH` from `/opt/bobj/sap_bobj/enterprise_xi40/odbc.ini`), then run:
+  ```bash
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now bo-mcp.service
+  ```
+- **Windows Server (`Windows Service`):** Run [`deploy/windows_service_setup.ps1`](deploy/windows_service_setup.ps1) in an elevated PowerShell prompt to register `SAPBusinessObjectsMCP` via `NSSM` or `sc.exe`.
+
+### 3. Connecting Your Local MCP Client to the Remote Server
+In your local `.agents/mcp_config.json` or `~/.gemini/config/mcp_config.json`, point to the remote endpoint:
+```json
+{
+  "mcpServers": {
+    "sap-business-objects-remote": {
+      "url": "http://your-bo-server:8000/mcp"
+    }
+  }
+}
+```
+Once connected, call `login(username="...", password="...")` in chat: your session is isolated by `ctx.session_id`, and if your account belongs to `Administrators`, all 7 local Log and Auditing DB tools are unlocked automatically.
+
+### 4. Remote Troubleshooting (`get_mcp_server_diagnostics` & `python server.py doctor`)
+If any subsystem fails while `bo-mcp` is running remotely on the SAP BO server:
+1. **Directly from Chat (No SSH Required):** Ask the AI agent: *"Run `get_mcp_server_diagnostics` to check why the remote server is failing."* The agent receives a secret-masked JSON report covering OS/user context, `biprws` reachability, `SAP_BO_LOG_DIR` permissions, `pyodbc` installed drivers / `ODBCINI`, and the last 50 lines of `bo-mcp`'s internal error ring buffer.
+2. **From the Server Terminal (CLI Doctor):** Run `uv run python server.py doctor` on the SAP BO host to print the complete 4-subsystem JSON diagnostic probe immediately.
 
 ---
 
@@ -568,9 +647,11 @@ The repository includes a production-grade operational skill located at [`.agent
 | `uv run python server.py status` | Inspect currently active resolved credentials and target URL |
 | `uv run python server.py test` | Verify stored credentials live against the SAP BO REST platform |
 | `uv run python server.py clear` | Securely delete credentials from OS Keyring and local config metadata |
-| `uv run pytest` | Run offline unit test suite with coverage report (97 tests) |
+| `uv run python server.py doctor` | Run 4-subsystem self-diagnostic health probe (`biprws`, `SAP_BO_LOG_DIR`, `pyodbc` Auditing DB, runtime) |
+| `uv run python server.py --transport streamable-http --host 0.0.0.0 --port 8000` | Start the MCP server in remote multi-tenant `Streamable HTTP` mode |
+| `uv run pytest` | Run offline unit test suite with coverage report (130 tests) |
 | `uv run ruff check .` | Run fast linting and style validation |
-| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 48 tools) |
+| `uv run fastmcp inspect server.py` | Inspect registered tools (verifies all 56 tools) |
 | `uv run fastmcp dev server.py` | Launch interactive web inspector for live debugging |
 | `uv run python server.py` | Run the MCP server in STDIO mode |
 

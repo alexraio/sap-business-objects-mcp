@@ -1,10 +1,11 @@
 """
 Administration, Security, and CMS Query Service for SAP BusinessObjects 4.3 SP5.
-Provides generic CMS SQL queries, User/Group management, and active session monitoring.
+Provides generic CMS SQL queries, User/Group management, RBAC group verification, and active session monitoring.
 """
 
 import logging
-from typing import Any, Dict, List
+import os
+from typing import Any, Dict, List, Optional
 
 from core.client import BOEClient
 from core.exceptions import BOEError, BOEQueryError
@@ -102,7 +103,7 @@ class AdminService:
             raise BOEError(f"Failed to update user status for {user_id}: {str(e)}")
 
     # =========================================================================
-    # 3. User Groups & Membership
+    # 3. User Groups, Membership & RBAC Verification
     # =========================================================================
 
     def get_user_groups(self, page: int = 1, pagesize: int = 100) -> List[Dict[str, Any]]:
@@ -148,6 +149,53 @@ class AdminService:
                 }
             )
         return users
+
+    def is_user_admin(self, username: str, admin_groups: Optional[List[str]] = None) -> bool:
+        """
+        Verifies whether a SAP BusinessObjects user holds Administrator privileges.
+        Returns True if the username is 'Administrator' or belongs to any configured
+        administrative UserGroup (defaults to 'Administrators' or SAP_BO_ADMIN_GROUPS).
+        """
+        normalized_user = (username or "").strip()
+        if not normalized_user:
+            return False
+
+        # Built-in SAP BO Administrator account
+        if normalized_user.lower() == "administrator":
+            return True
+
+        configured_groups = admin_groups
+        if configured_groups is None:
+            raw_env = os.getenv("SAP_BO_ADMIN_GROUPS", "Administrators")
+            configured_groups = [g.strip() for g in raw_env.split(",") if g.strip()]
+
+        try:
+            for group_name in configured_groups:
+                group_ids: List[str] = []
+                if group_name.lower() == "administrators":
+                    # Standard SAP BO Administrators group has SI_ID = 1, but also verify by name if customized
+                    group_ids.append("1")
+                escaped_group = group_name.replace("'", "''")
+                grp_res = self.cms_query(
+                    f"SELECT SI_ID, SI_NAME FROM CI_SYSTEMOBJECTS "
+                    f"WHERE SI_KIND = 'UserGroup' AND SI_NAME = '{escaped_group}'",
+                    page=1,
+                    pagesize=10,
+                )
+                for entry in grp_res.get("entries", []):
+                    gid = str(entry.get("SI_ID", "")).strip()
+                    if gid and gid not in group_ids:
+                        group_ids.append(gid)
+
+                for gid in group_ids:
+                    members = self.get_group_users(gid)
+                    if any(m.get("username", "").strip().lower() == normalized_user.lower() for m in members):
+                        return True
+        except Exception as e:
+            logger.warning(f"Failed to verify admin group membership for user '{normalized_user}': {e}")
+            return False
+
+        return False
 
     # =========================================================================
     # 4. Active Sessions Monitoring

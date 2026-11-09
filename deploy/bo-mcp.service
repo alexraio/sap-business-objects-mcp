@@ -1,0 +1,32 @@
+[Unit]
+Description=SAP BusinessObjects BI 4.3 SP5 MCP Server (Streamable HTTP / SSE)
+Documentation=https://github.com/alexraio/sap-business-objects-mcp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run under the same non-root OS account that runs SAP BusinessObjects (e.g. bobj)
+# so the service natively inherits read access to sap_bobj/logging/ and odbc.ini
+User=bobj
+Group=bobj
+WorkingDirectory=/opt/bo-mcp
+
+# Expose SAP BusinessObjects native unixODBC configuration and shared libraries
+Environment="ODBCINI=/opt/bobj/sap_bobj/enterprise_xi40/odbc.ini"
+Environment="LD_LIBRARY_PATH=/opt/bobj/sqlanywhere/lib64:/opt/bobj/sap_bobj/enterprise_xi40/linux_x64/odbc/lib"
+EnvironmentFile=-/opt/bo-mcp/.env
+
+ExecStart=/usr/local/bin/uv run python server.py --transport streamable-http --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Security hardening (while preserving read access to SAP BO logs and ODBC drivers)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadOnlyPaths=/opt/bobj/sap_bobj/logging
+
+[Install]
+WantedBy=multi-user.target

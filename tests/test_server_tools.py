@@ -9,9 +9,9 @@ import server
 
 class TestServerToolRegistration:
     def test_total_registered_tools_count(self):
-        """Verifies that all 48 enterprise MCP tools are properly registered on FastMCP."""
+        """Verifies that all 56 enterprise MCP tools (48 REST + 3 Log + 4 Audit + 1 Self-Diagnostics) are registered."""
         tools = server.mcp._tool_manager._tools
-        assert len(tools) == 48, f"Expected exactly 48 registered tools, got {len(tools)}"
+        assert len(tools) == 56, f"Expected exactly 56 registered tools, got {len(tools)}"
 
     def test_essential_tools_present(self):
         tools = server.mcp._tool_manager._tools
@@ -74,6 +74,17 @@ class TestServerToolRegistration:
             "get_categories",
             # Intelligent Diagnostics
             "diagnose_batch_failures",
+            # Local SAP BO Log Inspection (Admin-Only)
+            "list_bo_logs",
+            "search_bo_logs",
+            "get_bo_log_context",
+            # Auditing DB ODBC Introspection (Admin-Only)
+            "get_audit_failed_events",
+            "get_audit_heavy_reports",
+            "get_audit_user_activity",
+            "query_audit_db",
+            # Self-Diagnostics
+            "get_mcp_server_diagnostics",
         ]
         for t in expected_tools:
             assert t in tools, f"Missing tool in server: {t}"
@@ -142,3 +153,9 @@ class TestServerToolRegistration:
         assert res["clusters_count"] == 0
         assert "successfully" in res["executive_summary"]
         mock_diagnose.assert_called_once_with(hours_back=12, kind="All", folder_id=None, max_instances=100)
+
+    def test_parse_server_args(self):
+        parsed = server.parse_server_args(["--transport", "streamable-http", "--host", "127.0.0.1", "--port", "9000"])
+        assert parsed.transport == "streamable-http"
+        assert parsed.host == "127.0.0.1"
+        assert parsed.port == 9000

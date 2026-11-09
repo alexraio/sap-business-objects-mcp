@@ -8,7 +8,7 @@ import hashlib
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from core.client import BOEClient
 from core.models import (
@@ -18,14 +18,25 @@ from core.models import (
     PotentialCause,
 )
 
+if TYPE_CHECKING:
+    from services.audit_service import AuditService
+    from services.log_service import LogService
+
 logger = logging.getLogger("DiagnosticService")
 
 
 class DiagnosticService:
     """Service to scan, cluster, and intelligently diagnose failed batch schedules and publications."""
 
-    def __init__(self, client: BOEClient):
+    def __init__(
+        self,
+        client: BOEClient,
+        log_service: Optional["LogService"] = None,
+        audit_service: Optional["AuditService"] = None,
+    ):
         self.client = client
+        self.log_service = log_service
+        self.audit_service = audit_service
 
     # =========================================================================
     # 1. Scanning CMS Repository for Failures
@@ -533,12 +544,54 @@ class DiagnosticService:
     # 5. Full Batch Diagnostic Orchestration
     # =========================================================================
 
+    def _correlate_cluster_telemetry(
+        self,
+        error_signature: str,
+        report_names: List[str],
+        hours_back: int,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Enriches a failure cluster by correlating local SAP BO server trace logs (.glf)
+        and Auditing Database failure events (ADS_EVENT). Fails gracefully if unconfigured.
+        """
+        correlated_logs: List[Dict[str, Any]] = []
+        correlated_audits: List[Dict[str, Any]] = []
+
+        code_match = re.search(
+            r"\b(IES\s*\d+|WIS\s*\d+|WSR\s*\d+|ORA-\d+|FBE\s*\d+|FWM\s*\d+)\b", error_signature, re.I
+        )
+        search_term = code_match.group(1) if code_match else (report_names[0] if report_names else error_signature[:32])
+
+        if self.log_service is not None and search_term:
+            try:
+                log_res = self.log_service.search_logs(
+                    pattern=search_term,
+                    hours_back=hours_back,
+                    max_matches=5,
+                )
+                correlated_logs = log_res.get("matches", [])
+            except Exception as e:
+                logger.debug(f"Skipping local log correlation for '{search_term}': {e}")
+
+        if self.audit_service is not None:
+            try:
+                audit_res = self.audit_service.get_failed_events(hours_back=hours_back, max_rows=5)
+                correlated_audits = audit_res.get("rows", [])
+            except Exception as e:
+                logger.debug(f"Skipping Auditing DB correlation: {e}")
+
+        return {
+            "logs": correlated_logs,
+            "audits": correlated_audits,
+        }
+
     def diagnose_batch(
         self,
         hours_back: int = 12,
         kind: str = "All",
         folder_id: Optional[str] = None,
         max_instances: int = 100,
+        correlate_telemetry: bool = False,
     ) -> BatchDiagnosticsReport:
         """
         Main entry point for batch diagnostics.
@@ -628,6 +681,17 @@ class DiagnosticService:
                 missing_prompts=missing_prompts,
             )
 
+            correlated_logs: List[Dict[str, Any]] = []
+            correlated_audits: List[Dict[str, Any]] = []
+            if correlate_telemetry:
+                telemetry = self._correlate_cluster_telemetry(
+                    error_signature=signature,
+                    report_names=report_names_list,
+                    hours_back=hours_back,
+                )
+                correlated_logs = telemetry["logs"]
+                correlated_audits = telemetry["audits"]
+
             diagnosed_clusters.append(
                 ClusterDiagnosis(
                     cluster_id=c_id,
@@ -636,6 +700,8 @@ class DiagnosticService:
                     sample_instance_ids=affected_ids[:5],
                     sample_report_names=report_names_list[:5],
                     top_causes=top_causes[:3],
+                    correlated_log_entries=correlated_logs,
+                    correlated_audit_events=correlated_audits,
                 )
             )
 

@@ -3,7 +3,7 @@ type: index
 title: SAP BusinessObjects MCP (bo-mcp) LLM-Wiki
 description: Root Open Knowledge Format (OKF) catalog and progressive disclosure entry point for the SAP BusinessObjects 4.3 SP5 MCP Server knowledge wiki.
 status: active
-last_updated: 2026-11-06
+last_updated: 2026-11-09
 tags:
   - okf
   - llm-wiki
@@ -36,7 +36,7 @@ This self-contained `wiki/` folder combines **Andrej Karpathy's LLM-Wiki pattern
 | [System Overview & Layered Design](./architecture/system_overview.md) | Topology of `server.py`, `BOESDKParser` facade, `BOEClient`, and the 6 domain services. |
 | [Enterprise Authentication & Session Isolation](./architecture/authentication_and_sessions.md) | Chained credential resolution (`.env` $\rightarrow$ OS Keyring), `SecretStr` safety, CLI setup wizard, and `SessionManager` isolation. |
 | [Intelligent Diagnostics Engine](./architecture/intelligent_diagnostics_engine.md) | Automated batch failure Root Cause Analysis (`DiagnosticService`), SHA-256 signature clustering, and Pydantic v2 models. |
-| [Remote HTTP / SSE Deployment Roadmap](./architecture/remote_sse_roadmap.md) | Roadmap for multi-tenant HTTP/SSE/Streamable-HTTP enterprise gateway deployment. |
+| [Co-Located Remote MCP Server, Local Log Analyzer & ODBC Auditing Architecture](./architecture/remote_sse_roadmap.md) | Validated design for native Linux/Windows remote HTTP/SSE deployment, multi-tenant RBAC, `.glf` `LogService`, and ODBC `AuditService`. |
 
 ---
 

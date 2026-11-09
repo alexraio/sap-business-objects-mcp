@@ -4,6 +4,13 @@ This file is an append-only timeline tracking all `ingest`, `update`, and `lint`
 
 ---
 
+## [2026-11-09] update | Co-Located Remote MCP Server, Local Log Analyzer & ODBC Auditing Design
+- **Source:** Interactive `/brainstorming` architectural validation session
+- **Updated Pages:** `wiki/architecture/remote_sse_roadmap.md`, `wiki/architecture/index.md`, `wiki/index.md`, `TODO.md`
+- **Summary:** Documented the validated architectural design and Decision Log (`D1`–`D4`) for running `bo-mcp` natively on the SAP BusinessObjects host (Linux `systemd` / Windows Service) over `Streamable HTTP`/`SSE` with multi-tenant RBAC (`is_admin`), pure-Python reverse-streaming `.glf` log analysis (`LogService`), and RDBMS-agnostic `pyodbc` Auditing DB introspection (`AuditService`).
+
+---
+
 ## [2026-11-06] refactor | Consolidate All Wiki Assets under `wiki/`
 - **Source:** Repository structure optimization
 - **Updated Pages:** `wiki/index.md`, `wiki/log.md`, `wiki/raw/README.md`, `wiki/*/index.md`, `.agents/rules/wiki_operations.md`, `AGENTS.md`, `README.md`

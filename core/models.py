@@ -4,7 +4,7 @@ Enforces strict schema validation, type safety, and structured diagnostic output
 """
 
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,6 +59,14 @@ class ClusterDiagnosis(BaseModel):
     sample_report_names: List[str] = Field(..., description="Names of sample reports affected by this failure")
     top_causes: List[PotentialCause] = Field(
         ..., max_length=3, description="Up to 3 most probable root causes ordered by probability score"
+    )
+    correlated_log_entries: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Correlated local SAP BO server trace log entries (.glf/.log) matching this failure cluster",
+    )
+    correlated_audit_events: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Correlated SAP BO Auditing Database (ADS_EVENT) failure records matching this cluster",
     )
 
 
