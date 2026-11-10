@@ -27,7 +27,7 @@ import os
 import ssl
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 from urllib.parse import urlparse
 
 import anyio
@@ -36,6 +36,7 @@ from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.server.stdio import stdio_server
 from mcp.shared.message import SessionMessage
+from mcp.types import ErrorData, JSONRPCError, JSONRPCMessage, JSONRPCRequest
 
 # Ensure project root is in sys.path
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -146,6 +147,58 @@ def format_endpoint_url(base_url: str, transport: str) -> str:
     return clean_url
 
 
+async def _pipe_client_to_remote(
+    source_stream: Any,
+    dest_stream: Any,
+    local_out: Any,
+    cancel_scope: anyio.CancelScope,
+    get_session_id: Optional[Callable[[], Optional[str]]] = None,
+) -> None:
+    """
+    Forwards SessionMessages from local client to remote server.
+    Safely intercepts non-standard client probes (such as Antigravity's 'server/discover'
+    or requests sent before session initialization) and answers them directly with a standard
+    JSON-RPC error rather than letting the remote HTTP transport reject them with HTTP 400.
+    """
+    try:
+        async with source_stream:
+            async for item in source_stream:
+                if isinstance(item, Exception):
+                    logger.debug(f"Stream exception in client -> remote: {item}")
+                    continue
+                if isinstance(item, SessionMessage):
+                    root = getattr(item.message, "root", None)
+                    if isinstance(root, JSONRPCRequest):
+                        is_uninitialized = get_session_id is not None and get_session_id() is None
+                        if root.method == "server/discover" or (is_uninitialized and root.method != "initialize"):
+                            logger.info(
+                                f"Intercepted pre-initialization request '{root.method}' (id={root.id}); returning JSON-RPC error locally."
+                            )
+                            err_resp = SessionMessage(
+                                message=JSONRPCMessage(
+                                    root=JSONRPCError(
+                                        jsonrpc="2.0",
+                                        id=root.id,
+                                        error=ErrorData(
+                                            code=-32602,
+                                            message=f"Method '{root.method}' not supported before initialize",
+                                            data="",
+                                        ),
+                                    )
+                                )
+                            )
+                            await local_out.send(err_resp)
+                            continue
+
+                    await dest_stream.send(item)
+    except (anyio.ClosedResourceError, anyio.EndOfStream):
+        logger.debug("client -> remote reached End of Stream.")
+    except Exception as e:
+        logger.debug(f"Exception in client -> remote: {e}")
+    finally:
+        cancel_scope.cancel()
+
+
 async def _pipe_stream(
     source_stream: Any,
     dest_stream: Any,
@@ -202,11 +255,12 @@ async def run_bridge(
 
                 async with anyio.create_task_group() as tg:
                     tg.start_soon(
-                        _pipe_stream,
+                        _pipe_client_to_remote,
                         local_in,
                         remote_out,
-                        "client -> remote",
+                        local_out,
                         tg.cancel_scope,
+                        get_session_id,
                     )
                     tg.start_soon(
                         _pipe_stream,
@@ -225,11 +279,12 @@ async def run_bridge(
                 logger.info("Established remote SSE connection.")
                 async with anyio.create_task_group() as tg:
                     tg.start_soon(
-                        _pipe_stream,
+                        _pipe_client_to_remote,
                         local_in,
                         remote_out,
-                        "client -> remote",
+                        local_out,
                         tg.cancel_scope,
+                        None,
                     )
                     tg.start_soon(
                         _pipe_stream,
