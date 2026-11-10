@@ -397,6 +397,27 @@ class AuditService:
     # High-Level SAP BO 4.3 Auditing Diagnostic Queries (ADS_* Schema)
     # =========================================================================
 
+    # Decoded event projection shared by the high-level queries. Verified against a live SAP BO 4.3 SP5
+    # Auditing DB: ADS_EVENT has no Error_Code column; the failure text lives in ADS_EVENT_DETAIL
+    # (Event_Detail_Type_ID = 1, "Error") and names come from the *_STR tables (Language = 'EN').
+    _EVENT_COLUMNS = (
+        "e.Event_ID, e.Start_Time, e.Duration_ms, e.User_Name, e.Event_Type_ID, et.Event_Type_Name, "
+        "e.Status_ID, st.Status_Name, e.Object_ID, e.Object_Name, e.Object_Folder_Path, "
+        "ed.Event_Detail_Value AS Error_Message"
+    )
+    _EVENT_JOINS = (
+        "FROM ADS_EVENT e "
+        "LEFT JOIN ADS_EVENT_TYPE_STR et ON et.Event_Type_ID = e.Event_Type_ID AND et.Language = 'EN' "
+        "LEFT JOIN ADS_STATUS_STR st ON st.Status_ID = e.Status_ID AND st.Event_Type_ID = e.Event_Type_ID "
+        "AND st.Language = 'EN' "
+        "LEFT JOIN ADS_EVENT_DETAIL ed ON ed.Event_ID = e.Event_ID AND ed.Event_Detail_Type_ID = 1 "
+    )
+    # Status_ID 0 is success; some non-zero statuses are benign (e.g. 3 = "Exported / Saved Successfully ...").
+    _FAILED_PREDICATE = (
+        "e.Status_ID <> 0 AND (st.Status_Name IS NULL OR "
+        "(st.Status_Name NOT LIKE '%Success%' AND st.Status_Name NOT LIKE '%Succeeded%'))"
+    )
+
     def get_failed_events(
         self,
         hours_back: int = 24,
@@ -410,19 +431,12 @@ class AuditService:
         cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=max(1, hours_back))
         cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
 
-        where_clauses = [
-            f"e.Start_Time >= '{cutoff_str}'",
-            "(e.Status_ID <> 0 OR (e.Error_Code IS NOT NULL AND e.Error_Code <> ''))",
-        ]
+        where_clauses = [f"e.Start_Time >= '{cutoff_str}'", self._FAILED_PREDICATE]
         if event_type_id is not None:
             where_clauses.append(f"e.Event_Type_ID = {int(event_type_id)}")
 
         where_sql = " AND ".join(where_clauses)
-        sql = (
-            "SELECT e.Event_ID, e.Start_Time, e.Duration_ms, e.User_Name, "
-            "e.Event_Type_ID, e.Status_ID, e.Object_ID, e.Object_Name, e.Error_Code, e.Server_CUID "
-            f"FROM ADS_EVENT e WHERE {where_sql} ORDER BY e.Start_Time DESC"
-        )
+        sql = f"SELECT {self._EVENT_COLUMNS} {self._EVENT_JOINS}WHERE {where_sql} ORDER BY e.Start_Time DESC"
         res = self.execute_query(sql, max_rows=max_rows)
         res["hours_back"] = hours_back
         res["event_type_id"] = event_type_id
@@ -473,11 +487,7 @@ class AuditService:
             where_clauses.append(f"e.User_Name = '{escaped_user}'")
 
         where_sql = " AND ".join(where_clauses)
-        sql = (
-            "SELECT e.Event_ID, e.Start_Time, e.Duration_ms, e.User_Name, "
-            "e.Event_Type_ID, e.Status_ID, e.Object_ID, e.Object_Name, e.Error_Code "
-            f"FROM ADS_EVENT e WHERE {where_sql} ORDER BY e.Start_Time DESC"
-        )
+        sql = f"SELECT {self._EVENT_COLUMNS} {self._EVENT_JOINS}WHERE {where_sql} ORDER BY e.Start_Time DESC"
         res = self.execute_query(sql, max_rows=max_rows)
         res["username_filter"] = username
         res["hours_back"] = hours_back

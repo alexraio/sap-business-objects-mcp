@@ -220,3 +220,33 @@ def _run_with_short_timeout(real_run):
         return real_run(*args, **kwargs)
 
     return wrapper
+
+
+class TestAuditQueriesMatchRealSchema:
+    """The ADS_EVENT table has no Error_Code/Server_CUID columns (verified on a live SAP BO 4.3 SP5 host)."""
+
+    @staticmethod
+    def _captured_sql(method_name: str, **kwargs) -> str:
+        svc = AuditService(config=AuditDBConfig(dsn="D"), isolated=False)
+        captured = {}
+
+        def fake_execute(sql, params=None, max_rows=100):
+            captured["sql"] = sql
+            return {"rows": [], "rows_returned": 0}
+
+        svc.execute_query = fake_execute  # type: ignore[method-assign]
+        getattr(svc, method_name)(**kwargs)
+        return captured["sql"]
+
+    def test_failed_events_sql_uses_real_columns_and_decodes_status(self):
+        sql = self._captured_sql("get_failed_events", hours_back=24)
+        assert "Error_Code" not in sql and "Server_CUID" not in sql
+        assert "ADS_STATUS_STR" in sql and "Event_Detail_Type_ID = 1" in sql
+        assert "NOT LIKE '%Success%'" in sql  # benign non-zero statuses are not failures
+        assert AuditService.validate_readonly_sql(sql)  # still passes the read-only guardrail
+
+    def test_user_activity_sql_uses_real_columns(self):
+        sql = self._captured_sql("get_user_activity", username="O'Brien")
+        assert "Error_Code" not in sql
+        assert "e.User_Name = 'O''Brien'" in sql
+        assert AuditService.validate_readonly_sql(sql)

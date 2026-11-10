@@ -451,7 +451,7 @@ When `bo-mcp` runs co-located on the SAP BusinessObjects host, `LogService` stre
 
 | Tool | Parameters | Description |
 | :--- | :--- | :--- |
-| `get_audit_failed_events` | `hours_back=24`, `event_type_id?`, `max_rows=100` | **[Admin-Only]** Queries `ADS_EVENT` for failed platform events (`Status_ID <> 0` or populated `Error_Code`). |
+| `get_audit_failed_events` | `hours_back=24`, `event_type_id?`, `max_rows=100` | **[Admin-Only]** Queries `ADS_EVENT` for failed platform events (`Status_ID <> 0` excluding successful statuses, decoded via `ADS_STATUS_STR`, with the error text from `ADS_EVENT_DETAIL`). |
 | `get_audit_heavy_reports` | `days_back=7`, `top_n=20` | **[Admin-Only]** Identifies the slowest and heaviest reports in `ADS_EVENT` ranked by maximum and average `Duration_ms`. |
 | `get_audit_user_activity` | `username?`, `hours_back=24`, `max_rows=100` | **[Admin-Only]** Retrieves recent user logons, document views, refreshes, and exports from `ADS_EVENT`. |
 | `query_audit_db` | `sql_query`, `max_rows=200` | **[Admin-Only]** Executes a custom, strictly read-only `SELECT` query against `ADS_*` tables (multi-statement `;` and DML/DDL keywords are blocked). |

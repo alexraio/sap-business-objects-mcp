@@ -60,7 +60,7 @@ This catalog documents the MCP tools registered in [`server.py`](../../server.py
 
 | Tool Name | Tier | Signature | Description |
 | :--- | :---: | :--- | :--- |
-| `get_audit_failed_events` | Tier 1 (Admin) | `get_audit_failed_events(hours_back: int = 24, event_type_id: Optional[int] = None, max_rows: int = 100) -> Dict[str, Any]` | Queries `ADS_EVENT` via `pyodbc` for failed platform events (`Status_ID <> 0` or populated `Error_Code`). |
+| `get_audit_failed_events` | Tier 1 (Admin) | `get_audit_failed_events(hours_back: int = 24, event_type_id: Optional[int] = None, max_rows: int = 100) -> Dict[str, Any]` | Queries `ADS_EVENT` via `pyodbc` for failed platform events (`Status_ID <> 0` excluding successful statuses, decoded via `ADS_STATUS_STR`, with the error text from `ADS_EVENT_DETAIL`). |
 | `get_audit_heavy_reports` | Tier 1 (Admin) | `get_audit_heavy_reports(days_back: int = 7, top_n: int = 20) -> Dict[str, Any]` | Identifies the slowest and heaviest reports in `ADS_EVENT` ranked by maximum and average execution duration (`Duration_ms`). |
 | `get_audit_user_activity` | Tier 1 (Admin) | `get_audit_user_activity(username: Optional[str] = None, hours_back: int = 24, max_rows: int = 100) -> Dict[str, Any]` | Retrieves recent user logon, viewing, refresh, and export activity from `ADS_EVENT`. |
 | `query_audit_db` | Tier 1 (Admin) | `query_audit_db(sql_query: str, max_rows: int = 200) -> Dict[str, Any]` | Executes a strictly read-only `SELECT` (or `WITH ... SELECT`) query against `ADS_*` tables using `cursor.fetchmany(max_rows)`. |
