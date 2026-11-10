@@ -1131,6 +1131,7 @@ def run_server(argv: Optional[List[str]] = None) -> None:
     if len(args_list) > 0 and args_list[0] == "doctor":
         import json
 
+        print("Collecting diagnostics (REST API, logs, auditing DB)...", file=sys.stderr, flush=True)
         report = collect_server_diagnostics(
             session=default_session,
             session_manager=session_manager,

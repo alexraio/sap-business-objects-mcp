@@ -140,3 +140,38 @@ class TestRBACAndRemoteSession:
             assert diag_report["subsystems"]["sap_bo_rest_api"]["reachable"] is True
             assert diag_report["subsystems"]["local_log_service"]["status"] == "ok"
             assert "recent_internal_logs" in diag_report
+
+
+class TestIsolatedAuditProbe:
+    """The auditing DB probe must never crash or freeze the host process (e.g. `doctor`)."""
+
+    def test_unconfigured_probe_reports_error_without_crashing(self):
+        from core.self_diagnostics import probe_audit_database
+
+        with patch.dict("os.environ", {}, clear=False) as env:
+            for key in ("SAP_BO_AUDIT_DSN", "SAP_BO_AUDIT_CONNECTION_STRING", "SAP_BO_AUDIT_DRIVER"):
+                env.pop(key, None)
+            probe = probe_audit_database(timeout_seconds=30)
+        assert probe["connected"] is False
+        assert probe["error"]
+
+    def test_native_crash_is_reported_as_error(self):
+        import core.self_diagnostics as diag
+
+        with patch.object(
+            diag,
+            "_AUDIT_PROBE_SCRIPT",
+            'import os; print(\'{"stage": "import", "pyodbc_installed": true}\', flush=True); os.abort()',
+        ):
+            probe = diag.probe_audit_database(timeout_seconds=30)
+        assert probe["connected"] is False
+        assert probe["pyodbc_installed"] is True
+        assert "crashed" in probe["error"]
+
+    def test_hang_is_reported_as_timeout(self):
+        import core.self_diagnostics as diag
+
+        with patch.object(diag, "_AUDIT_PROBE_SCRIPT", "import time; time.sleep(30)"):
+            probe = diag.probe_audit_database(timeout_seconds=1)
+        assert probe["connected"] is False
+        assert "timed out" in probe["error"]

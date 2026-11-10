@@ -9,11 +9,14 @@ from __future__ import annotations
 import collections
 import datetime as dt
 import getpass
+import json
 import logging
 import os
 import platform
 import re
 import socket
+import subprocess
+import sys
 import threading
 import time
 from logging.handlers import RotatingFileHandler
@@ -114,6 +117,117 @@ def configure_server_logging(log_file_path: Optional[Path] = None) -> None:
             pass
 
 
+_AUDIT_PROBE_SCRIPT = r"""
+import faulthandler, json, sys, time
+faulthandler.enable()
+sys.path.insert(0, sys.argv[1])
+
+def emit(**kw):
+    print(json.dumps(kw), flush=True)
+
+import core.session  # noqa: F401  (same import order as server.py; avoids a circular import)
+from services import audit_service as a
+
+mod = a._load_pyodbc()
+if mod is None:
+    emit(
+        stage="import",
+        pyodbc_installed=False,
+        error="pyodbc is not installed or the unixODBC library is missing on this host "
+        "(install with 'uv sync --extra audit' and the unixODBC package).",
+    )
+    sys.exit(0)
+emit(stage="import", pyodbc_installed=True)
+try:
+    drivers = list(mod.drivers())
+except Exception:
+    drivers = []
+emit(stage="drivers", available_odbc_drivers=drivers)
+t = time.perf_counter()
+try:
+    a.AuditService().execute_query("SELECT 1 AS health_check", max_rows=1)
+    emit(stage="query", connected=True, latency_ms=round((time.perf_counter() - t) * 1000.0, 2))
+except Exception as e:
+    emit(stage="query", connected=False, latency_ms=round((time.perf_counter() - t) * 1000.0, 2), error=str(e))
+"""
+
+
+def probe_audit_database(timeout_seconds: Optional[float] = None) -> Dict[str, Any]:
+    """
+    Probes the Auditing DB ODBC stack in a child process.
+
+    A segfault/abort in unixODBC or the vendor driver, or a network hang, would otherwise kill or freeze
+    the whole server (and make `doctor` print nothing). Here it is reported as a readable error instead.
+    """
+    try:
+        db_timeout = max(5, int(os.getenv("SAP_BO_AUDIT_TIMEOUT", "20")))
+    except ValueError:
+        db_timeout = 20
+    limit = timeout_seconds if timeout_seconds is not None else db_timeout + 10
+
+    probe: Dict[str, Any] = {
+        "pyodbc_installed": None,
+        "available_odbc_drivers": [],
+        "odbcini_env": os.getenv("ODBCINI"),
+        "ld_library_path_set": bool(os.getenv("LD_LIBRARY_PATH")),
+        "configured_dsn": os.getenv("SAP_BO_AUDIT_DSN"),
+        "configured_host": os.getenv("SAP_BO_AUDIT_HOST"),
+        "configured_user": os.getenv("SAP_BO_AUDIT_USER"),
+        "connected": False,
+        "latency_ms": None,
+        "error": None,
+    }
+    project_root = str(Path(__file__).resolve().parent.parent)
+    t0 = time.perf_counter()
+    stdout, stderr, returncode, timed_out = "", "", 0, False
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _AUDIT_PROBE_SCRIPT, project_root],
+            capture_output=True,
+            text=True,
+            timeout=limit,
+            cwd=project_root,
+            env=os.environ.copy(),
+        )
+        stdout, stderr, returncode = proc.stdout, proc.stderr, proc.returncode
+    except subprocess.TimeoutExpired as e:
+        timed_out = True
+        stdout = e.stdout.decode(errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        stderr = e.stderr.decode(errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+    except Exception as e:
+        probe["error"] = sanitize_log_text(f"Could not start audit probe subprocess: {e}")
+        return probe
+
+    # Merge the progressive JSON lines emitted by the child (so partial results survive a crash).
+    for line in stdout.splitlines():
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        data.pop("stage", None)
+        probe.update(data)
+    if probe.get("latency_ms") is None:
+        probe["latency_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
+
+    stderr_tail = sanitize_log_text(" | ".join(stderr.strip().splitlines()[-6:]))
+    if timed_out:
+        probe["connected"] = False
+        probe["error"] = (
+            f"Audit DB probe timed out after {limit:.0f}s (ODBC driver or database network hang). "
+            f"Check SAP_BO_AUDIT_DSN host/port reachability and the driver. {stderr_tail}"
+        ).strip()
+    elif returncode != 0:
+        probe["connected"] = False
+        reason = f"signal {-returncode}" if returncode < 0 else f"exit code {returncode}"
+        probe["error"] = (
+            f"Audit DB probe process crashed ({reason}) - likely a native ODBC library/driver problem "
+            f"(check LD_LIBRARY_PATH/ODBCINI and driver architecture). {stderr_tail}"
+        ).strip()
+    elif probe.get("error"):
+        probe["error"] = sanitize_log_text(str(probe["error"]))
+    return probe
+
+
 def collect_server_diagnostics(
     session: "UserSession",
     session_manager: "SessionManager",
@@ -197,36 +311,8 @@ def collect_server_diagnostics(
         log_probe["status"] = "error"
         log_probe["error"] = sanitize_log_text(str(e))
 
-    # 4. Auditing Database ODBC Probe
-    from services.audit_service import pyodbc as audit_pyodbc
-
-    available_drivers: List[str] = []
-    if audit_pyodbc is not None:
-        try:
-            available_drivers = list(audit_pyodbc.drivers())
-        except Exception:
-            available_drivers = []
-
-    audit_probe: Dict[str, Any] = {
-        "pyodbc_installed": audit_pyodbc is not None,
-        "available_odbc_drivers": available_drivers,
-        "odbcini_env": os.getenv("ODBCINI"),
-        "ld_library_path_set": bool(os.getenv("LD_LIBRARY_PATH")),
-        "configured_dsn": os.getenv("SAP_BO_AUDIT_DSN"),
-        "configured_host": os.getenv("SAP_BO_AUDIT_HOST"),
-        "configured_user": os.getenv("SAP_BO_AUDIT_USER"),
-        "connected": False,
-        "latency_ms": None,
-        "error": None,
-    }
-    t1 = time.perf_counter()
-    try:
-        session.parser.audit.execute_query("SELECT 1 AS health_check", max_rows=1)
-        audit_probe["latency_ms"] = round((time.perf_counter() - t1) * 1000.0, 2)
-        audit_probe["connected"] = True
-    except Exception as e:
-        audit_probe["latency_ms"] = round((time.perf_counter() - t1) * 1000.0, 2)
-        audit_probe["error"] = sanitize_log_text(str(e))
+    # 4. Auditing Database ODBC Probe (isolated in a subprocess: native ODBC libraries can crash or hang)
+    audit_probe = probe_audit_database()
 
     result: Dict[str, Any] = {
         "runtime": runtime_info,

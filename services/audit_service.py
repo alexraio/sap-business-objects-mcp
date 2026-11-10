@@ -18,12 +18,27 @@ from pydantic import SecretStr
 
 from core.exceptions import BOEAuditDBError
 
-try:
-    import pyodbc  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover
-    pyodbc = None  # type: ignore[assignment]
+# pyodbc is imported lazily: loading it pulls in native libraries (unixODBC), and a broken
+# library path must never be able to take down the whole server or the `doctor` CLI at import time.
+pyodbc: Any = None
+_PYODBC_IMPORT_ATTEMPTED = False
 
 logger = logging.getLogger("AuditService")
+
+
+def _load_pyodbc() -> Any:
+    """Imports pyodbc on first use. Returns the module, or None if it (or unixODBC) is unavailable."""
+    global pyodbc, _PYODBC_IMPORT_ATTEMPTED
+    if pyodbc is None and not _PYODBC_IMPORT_ATTEMPTED:
+        _PYODBC_IMPORT_ATTEMPTED = True
+        try:
+            import pyodbc as _pyodbc  # type: ignore[import-not-found]
+
+            pyodbc = _pyodbc
+        except ImportError as e:
+            logger.warning("pyodbc could not be imported: %s", e)
+    return pyodbc
+
 
 FORBIDDEN_SQL_KEYWORDS = frozenset(
     {
@@ -233,7 +248,8 @@ class AuditService:
         cfg = self._get_config()
         conn_str = cfg.build_connection_string()
 
-        if pyodbc is None:
+        odbc = _load_pyodbc()
+        if odbc is None:
             raise BOEAuditDBError(
                 "pyodbc is not installed or unixODBC library is missing on this host. "
                 "Install unixODBC and pyodbc to query the SAP BusinessObjects Auditing Database."
@@ -242,7 +258,7 @@ class AuditService:
         capped_max = max(1, min(max_rows, self.MAX_ALLOWED_ROWS))
 
         try:
-            with pyodbc.connect(conn_str, readonly=True, timeout=cfg.timeout) as conn:
+            with odbc.connect(conn_str, readonly=True, timeout=cfg.timeout) as conn:
                 with conn.cursor() as cursor:
                     if params:
                         cursor.execute(validated_sql, tuple(params))
