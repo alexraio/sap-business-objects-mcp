@@ -309,6 +309,9 @@ BO_MCP/
 
 ## Available MCP Tools Reference (56 Tools)
 
+> [!TIP]
+> **Looking for ready-to-use conversational queries and workflows?**  
+> Explore the comprehensive [**User Prompt Catalog**](USER_PROMPT_CATALOG.md) containing dozens of practical, domain-driven questions in Italian and English covering business intelligence, data lineage, batch forensics, and administrative governance across all 56 tools.
 
 ### 1. Authentication (2 Tools)
 | Tool | Parameters | Description |

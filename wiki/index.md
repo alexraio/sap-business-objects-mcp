@@ -60,6 +60,7 @@ This self-contained `wiki/` folder combines **Andrej Karpathy's LLM-Wiki pattern
 | [Semantic Layer & Web Intelligence Tools](./tools/catalog_semantic_and_webi.md) | 24 tools for authentication, universes, Webi lifecycle, prompts, tabular block data, exports, and Change Data Source. |
 | [CMS Administration, Security & InfoStore Tools](./tools/catalog_cms_admin_and_infostore.md) | 14 tools for `cms_query`, users, user groups, active sessions, folders, and corporate categories. |
 | [Schedules, Instances & Batch Diagnostics Tools](./tools/catalog_schedules_and_diagnostics.md) | 5 tools for recurring schedules, historical instances, and `diagnose_batch_failures`. |
+| [Comprehensive User Prompt Catalog](../USER_PROMPT_CATALOG.md) | Complete domain-by-domain reference of queries and analytical prompts for users across all 56 tools. |
 
 ---
 
