@@ -42,7 +42,7 @@ coverage.xml
 htmlcov/
 
 # Local agent / workspace configurations (contains absolute user paths & emails)
-.agents/mcp_config.json
+.agents/mcp_config*.json
 .git_backup/
 
 # Logs & temporary files

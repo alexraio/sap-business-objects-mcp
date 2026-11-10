@@ -45,7 +45,7 @@ Write-Host "[OK] Astral uv found: $(& uv --version)" -ForegroundColor Green
 # Step 2: Sync dependencies
 Write-Host "[INFO] Synchronizing virtual environment and dependencies via uv..." -ForegroundColor Cyan
 Set-Location -Path $ProjectRoot
-& uv sync
+& uv sync --extra audit
 Write-Host "[OK] Dependencies synchronized." -ForegroundColor Green
 
 # Step 3: Setup .env file

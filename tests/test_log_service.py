@@ -14,11 +14,11 @@ SAMPLE_GLF_CONTENT = """FILE_TYPE:DAAA96DE-B0FB-4c6e-AF7B-A445F5BF9BE2
 ENCODING:UTF8
 RECORD_SEPARATOR:30
 COLUMN_SEPARATOR:124
-COLUMNS:Location|Guid|Time|Tzone|Importance|Severity|Exception|DeviceName|ProcessID|ThreadID|ThreadName|ScopeTag|MajorTick|MinorTick|MajorDepth|MinorDepth|RootName|RootID|CallerName|CallerID|CalleeName|CalleeID|ActionID|DSRRootContextID|DSRTransaction|DSRConnection|DSRCounter|User|ArchitectComponent|DeveloperComponent|Administrator|Unit|CSNComponent|Text
+COLUMNS:Location|Guid|Time|Tzone|Trace|Log|Importance|Severity|Exception|DeviceName|ProcessID|ThreadID|ThreadName|ScopeTag|MajorTick|MinorTick|MajorDepth|MinorDepth|RootName|RootID|CallerName|CallerID|CalleeName|CalleeID|ActionID|DSRRootContextID|DSRTransaction|DSRConnection|DSRCounter|User|ArchitectComponent|DeveloperComponent|Administrator|Unit|CSNComponent|Text
 HEADER_END
-src/webi.cpp:101|guid-1|2026/11/09 02:10:00.100|+0100|1|I| |webiserver_BO43.WebIntelligenceProcessingServer|1234|401|Worker1| |0|0|0|0| | | | | | | | | | | |alice|Webi|Engine| | | |Opening document ID 14820\x1e
-src/webi.cpp:205|guid-2|2026/11/09 02:10:05.250|+0100|1|E|X|webiserver_BO43.WebIntelligenceProcessingServer|1234|401|Worker1| |0|0|0|0| | | | | | | | | | | |alice|Webi|Engine| | | |Database error: ORA-01017: invalid username/password; logon denied. (IES 10901)\x1e
-src/webi.cpp:310|guid-3|2026/11/09 02:11:12.900|+0100|1|F|X|webiserver_BO43.WebIntelligenceProcessingServer|1234|402|Worker2| |0|0|0|0| | | | | | | | | | | |Administrator|Webi|Engine| | | |Corba exception while refreshing DP0 (WIS 30553)\x1e
+src/webi.cpp:101|guid-1|2026/11/09 02:10:00.100|+0100| | |1|I| |webiserver_BO43.WebIntelligenceProcessingServer|1234|401|Worker1| |0|0|0|0| | | | | | | | | | | |alice|Webi|Engine| | | |Opening document ID 14820\x1e
+src/webi.cpp:205|guid-2|2026/11/09 02:10:05.250|+0100|Error| |1|E|X|webiserver_BO43.WebIntelligenceProcessingServer|1234|401|Worker1| |0|0|0|0| | | | | | | | | | | |alice|Webi|Engine| | | |Database error: ORA-01017: invalid username/password; logon denied. (IES 10901)\x1e
+src/webi.cpp:310|guid-3|2026/11/09 02:11:12.900|+0100| |Fatal|1| |X|webiserver_BO43.WebIntelligenceProcessingServer|1234|402|Worker2| |0|0|0|0| | | | | | | | | | | |Administrator|Webi|Engine| | | |Corba exception while refreshing DP0 (WIS 30553)\x1e
 """
 
 
@@ -89,3 +89,34 @@ class TestLogService:
         target_entries = [c for c in ctx["context"] if c["is_target_line"]]
         assert len(target_entries) == 1
         assert "IES 10901" in target_entries[0]["message"]
+
+
+class TestRealGlfRecords:
+    """Regression tests using verbatim records captured from a live SAP BO 4.3 APS log."""
+
+    ERROR_LINE = (
+        "|265C25AD74594147BC372A415C660D4C1542a|2026 04 17 11:04:32.337|+0200|Error| |>>|E| "
+        "|aps_orarhel01.AdaptiveProcessingServer| 3178|1806|server-shutdown | ||||||||||||||||||||"
+        "com.sap.businessobjects.analyticshub.framework.system.helper.CommonHelper||"
+        "AnalyticsHub Framework - executeWithFileLock() - Error while closing the lockfile"
+    )
+    FATAL_LINE = (
+        "|265C25AD74594147BC372A415C660D4C1542b|2026 04 17 11:04:32.337|+0200| |Fatal|  | | "
+        "|aps_orarhel01.AdaptiveProcessingServer| 3178|1806|server-shutdown | |0|0|0|0|"
+        "BIPSDK.InfoStore:query|ora-rhel-01:3178:1806.12088:1|-|-|BIPSDK.InfoStore:query|"
+        "ora-rhel-01:3178:1806.12088:1|ClJR8bXO.EcppBpg_f_vDkk2ba3|||||||||"
+        "com.crystaldecisions.enterprise.ocaframework.ManagedService||invoke(): the service is dead "
+    )
+
+    def test_error_record_fields(self):
+        rec = LogService._parse_log_line(self.ERROR_LINE, "fallback")
+        assert rec["severity"] == "Error"
+        assert rec["server_name"] == "aps_orarhel01.AdaptiveProcessingServer"
+        assert rec["thread_id"] == "server-shutdown"
+        assert rec["timestamp"] == "2026 04 17 11:04:32.337"
+        assert rec["message"].startswith("AnalyticsHub Framework")
+
+    def test_fatal_record_uses_log_column(self):
+        rec = LogService._parse_log_line(self.FATAL_LINE, "fallback")
+        assert rec["severity"] == "Fatal"
+        assert rec["message"].startswith("invoke(): the service is dead")

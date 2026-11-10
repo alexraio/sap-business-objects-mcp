@@ -74,6 +74,10 @@ dependencies = [
     "websockets==15.0.1",
 ]
 
+[project.optional-dependencies]
+# Auditing Database access via ODBC (requires the unixODBC runtime + the DB's ODBC driver on the host).
+audit = ["pyodbc>=5.2.0"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",

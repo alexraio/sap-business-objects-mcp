@@ -57,6 +57,16 @@ GLF_HEADER_PREFIXES = (
     "HEADER_END",
 )
 
+# Column layout declared by the real SAP BO 4.x .glf "COLUMNS:" header (36 columns).
+# Records start with an (often empty) Location column and end with the free-text Text column.
+GLF_COLUMNS = (
+    "Location|Guid|Time|Tzone|Trace|Log|Importance|Severity|Exception|DeviceName|ProcessID|ThreadID|ThreadName|"
+    "ScopeTag|MajorTick|MinorTick|MajorDepth|MinorDepth|RootName|RootID|CallerName|CallerID|CalleeName|CalleeID|"
+    "ActionID|DSRRootContextID|DSRTransaction|DSRConnection|DSRCounter|User|ArchitectComponent|"
+    "DeveloperComponent|Administrator|Unit|CSNComponent|Text"
+).split("|")
+GLF_COL = {name: idx for idx, name in enumerate(GLF_COLUMNS)}
+
 TIMESTAMP_REGEX = re.compile(r"(\d{4}[/-]\d{2}[/-]\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:[.,]\d{1,6})?)")
 
 
@@ -206,21 +216,23 @@ class LogService:
         # Pipe-delimited SAP BO .glf trace format
         if "|" in stripped:
             cols = [c.strip() for c in stripped.split("|")]
-            # Standard 34-column SAP BO 4.x GLF record
-            if len(cols) >= 12:
-                timestamp_str = cols[2] if len(cols) > 2 else ""
-                raw_sev = cols[5] if len(cols) > 5 else "I"
-                device_name = cols[7] if len(cols) > 7 and cols[7] else fallback_server
-                thread_id = cols[9] if len(cols) > 9 else ""
-                user_name = cols[27] if len(cols) > 27 else ""
-                message = cols[-1]
+            # Standard 36-column SAP BO 4.x GLF record (see GLF_COLUMNS)
+            if len(cols) >= GLF_COL["ThreadName"] + 1:
+
+                def col(name: str) -> str:
+                    idx = GLF_COL[name]
+                    return cols[idx] if idx < len(cols) else ""
+
+                # The effective level lives in Trace ('Error'), Log ('Fatal') or the Severity
+                # code ('E'/'W'/'A', see SEVERITY_MAP in the file header); first non-blank wins.
+                raw_sev = next((v for v in (col("Trace"), col("Log"), col("Severity")) if v), "Info")
                 return {
-                    "timestamp": timestamp_str,
-                    "severity": SEVERITY_NORMALIZATION.get(raw_sev.upper(), raw_sev or "Info"),
-                    "server_name": device_name,
-                    "thread_id": thread_id,
-                    "user": user_name,
-                    "message": message,
+                    "timestamp": col("Time"),
+                    "severity": SEVERITY_NORMALIZATION.get(raw_sev.upper(), raw_sev),
+                    "server_name": col("DeviceName") or fallback_server,
+                    "thread_id": col("ThreadName") or col("ThreadID"),
+                    "user": col("User"),
+                    "message": cols[-1],
                 }
             # Compact pipe-delimited record (e.g., Time|Severity|DeviceName|ThreadID|Message)
             if len(cols) >= 4:

@@ -113,7 +113,7 @@ ensure_uv_installed() {
 sync_dependencies() {
   log_info "Synchronizing Python virtual environment and dependencies via uv..."
   cd -- "${PROJECT_ROOT}"
-  uv sync
+  uv sync --extra audit
   log_success "Dependencies synchronized successfully."
 }
 

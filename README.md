@@ -525,6 +525,16 @@ The server refuses to start if only one of the two files is given or a file is m
   ```
 - **Windows Server (`Windows Service`):** Run [`deploy/windows_service_setup.ps1`](deploy/windows_service_setup.ps1) in an elevated PowerShell prompt to register `SAPBusinessObjectsMCP` via `NSSM` or `sc.exe`.
 
+#### Auditing Database prerequisites (host)
+The audit tools need `pyodbc` (optional extra `audit`, installed by `deploy/setup_*`) plus the unixODBC runtime and the ODBC driver of the auditing database on the host:
+```bash
+uv sync --extra audit                      # installs pyodbc (use this instead of plain `uv sync`)
+sudo dnf install unixODBC                  # RHEL/Oracle Linux; Debian/Ubuntu: sudo apt install unixodbc
+export ODBCINI=/opt/bobj/sap_bobj/enterprise_xi40/odbc.ini   # the systemd unit already sets it
+grep -n "^\[" "$ODBCINI"                   # SAP_BO_AUDIT_DSN must match one of these DSN names exactly
+uv run python server.py doctor             # section "auditing_db_odbc" shows driver/DSN/connection status
+```
+
 ### 3. Connecting Your Local MCP Client to the Remote Server
 
 You can connect your desktop MCP host (Google Antigravity IDE, Claude Desktop, Cursor) to the remote SAP BO server using two approaches:
