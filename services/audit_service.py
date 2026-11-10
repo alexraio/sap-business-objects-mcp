@@ -7,16 +7,20 @@ via native host ODBC connections (Linux unixODBC / Windows ODBC Data Source Admi
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import os
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
-from decimal import Decimal
+from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 from pydantic import SecretStr
 
 from core.exceptions import BOEAuditDBError
+from services.audit_worker import RESULT_MARKER, run_query, serialize_value
 
 # pyodbc is imported lazily: loading it pulls in native libraries (unixODBC), and a broken
 # library path must never be able to take down the whole server or the `doctor` CLI at import time.
@@ -24,6 +28,63 @@ pyodbc: Any = None
 _PYODBC_IMPORT_ATTEMPTED = False
 
 logger = logging.getLogger("AuditService")
+
+
+WORKER_PATH = Path(__file__).resolve().parent / "audit_worker.py"
+SYSTEM_LIB_DIRS = ("/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib")
+DEFAULT_SQLANYWHERE_HOMES = ("/opt/bobj/sqlanywhere", "/opt/sqlanywhere17")
+PASSWORD_IN_TEXT_RE = re.compile(r"(PWD\s*=\s*)([^;\s'\"]+)", re.IGNORECASE)
+
+
+def build_odbc_env(base_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """
+    Builds the environment for the ODBC worker/probe child process (Linux only; a copy of the input).
+
+    SAP BO host profiles typically export an LD_LIBRARY_PATH containing the DataDirect `libodbc.so` /
+    `libodbcinst.so` (and vendor client dirs). Those shadow the unixODBC libraries that pyodbc is linked
+    against and make the driver segfault. Here the system library directories are put FIRST, the SQL
+    Anywhere client libraries next, and the original entries last. SQLANY17 is also set when missing
+    (without it the SQL Anywhere driver fails with IM004 "SQLAllocHandle on SQL_HANDLE_HENV failed").
+    Override the SQL Anywhere location with SAP_BO_SQLANYWHERE_HOME.
+    """
+    env = dict(os.environ if base_env is None else base_env)
+    if not sys.platform.startswith("linux"):
+        return env
+
+    sa_home = next(
+        (
+            c
+            for c in (
+                env.get("SAP_BO_SQLANYWHERE_HOME"),
+                env.get("SQLANY17"),
+                *DEFAULT_SQLANYWHERE_HOMES,
+            )
+            if c and os.path.isdir(c)
+        ),
+        None,
+    )
+
+    leading = [d for d in SYSTEM_LIB_DIRS if os.path.isdir(d)]
+    if sa_home:
+        sa_lib = os.path.join(sa_home, "lib64")
+        if os.path.isdir(sa_lib):
+            leading.append(sa_lib)
+        env.setdefault("SQLANY17", sa_home)
+
+    original = [d for d in env.get("LD_LIBRARY_PATH", "").split(":") if d]
+    merged: list[str] = []
+    for entry in (*leading, *original):
+        if entry not in merged:
+            merged.append(entry)
+    env["LD_LIBRARY_PATH"] = ":".join(merged)
+    return env
+
+
+def _mask_secrets(text: str, password: Optional[str]) -> str:
+    """Removes the audit DB password (literal and PWD=... forms) from text destined for logs/errors."""
+    if password:
+        text = text.replace(password, "**********")
+    return PASSWORD_IN_TEXT_RE.sub(r"\1**********", text)
 
 
 def _load_pyodbc() -> Any:
@@ -172,8 +233,19 @@ class AuditService:
 
     MAX_ALLOWED_ROWS = 1000
 
-    def __init__(self, config: Optional[AuditDBConfig] = None):
+    def __init__(self, config: Optional[AuditDBConfig] = None, isolated: Optional[bool] = None):
+        """
+        Args:
+            config: Explicit ODBC settings (defaults to environment variables).
+            isolated: Run ODBC in a child process (default; env SAP_BO_AUDIT_ISOLATED=false disables).
+                In-process mode is only meant for debugging; a native driver crash would kill the server.
+        """
         self.config = config
+        self.isolated = (
+            isolated
+            if isolated is not None
+            else os.getenv("SAP_BO_AUDIT_ISOLATED", "true").strip().lower() not in ("0", "false", "no")
+        )
 
     def _get_config(self) -> AuditDBConfig:
         return self.config or AuditDBConfig.from_env()
@@ -224,15 +296,68 @@ class AuditService:
     @staticmethod
     def _serialize_value(val: Any) -> Any:
         """Converts database driver values into JSON-serializable Python types."""
-        if val is None or isinstance(val, (str, int, float, bool)):
-            return val
-        if isinstance(val, (dt.datetime, dt.date, dt.time)):
-            return val.isoformat()
-        if isinstance(val, Decimal):
-            return float(val)
-        if isinstance(val, (bytes, bytearray)):
-            return val.decode("utf-8", errors="replace")
-        return str(val)
+        return serialize_value(val)
+
+    def _run_isolated(
+        self,
+        cfg: AuditDBConfig,
+        conn_str: str,
+        sql: str,
+        params: Optional[Sequence[Any]],
+        capped_max: int,
+    ) -> Dict[str, Any]:
+        """Executes the query in a child process with a controlled library environment."""
+        secret = cfg.password.get_secret_value() if cfg.password else None
+        limit = cfg.timeout + 15
+        request = json.dumps(
+            {
+                "conn_str": conn_str,
+                "sql": sql,
+                "params": list(params) if params else None,
+                "capped_max": capped_max,
+                "timeout": cfg.timeout,
+            }
+        )
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(WORKER_PATH)],
+                input=request,
+                capture_output=True,
+                text=True,
+                timeout=limit,
+                env=build_odbc_env(),
+            )
+        except subprocess.TimeoutExpired as e:
+            raise BOEAuditDBError(
+                f"Auditing Database query timed out after {limit}s (ODBC driver or network hang). "
+                "Verify the DSN host/port and that the database server is running."
+            ) from e
+
+        stderr_tail = _mask_secrets(" | ".join(proc.stderr.strip().splitlines()[-6:]), secret)
+        if proc.returncode != 0:
+            reason = f"signal {-proc.returncode}" if proc.returncode < 0 else f"exit code {proc.returncode}"
+            raise BOEAuditDBError(
+                f"Auditing Database ODBC worker crashed ({reason}) - likely a native ODBC library/driver problem "
+                f"(check ODBCINI, driver architecture and library path). {stderr_tail}".strip()
+            )
+
+        payload: Optional[Dict[str, Any]] = None
+        for line in proc.stdout.splitlines():
+            if line.startswith(RESULT_MARKER):
+                try:
+                    payload = json.loads(line[len(RESULT_MARKER) :])
+                except ValueError:
+                    payload = None
+        if payload is None:
+            raise BOEAuditDBError(f"Auditing Database ODBC worker returned no result. {stderr_tail}".strip())
+        if payload.get("error_code") == "pyodbc_missing":
+            raise BOEAuditDBError(
+                "pyodbc is not installed or unixODBC library is missing on this host. "
+                "Install it with 'uv sync --extra audit' and the unixODBC package."
+            )
+        if "error" in payload:
+            raise BOEAuditDBError(f"Auditing Database ODBC query failed: {_mask_secrets(payload['error'], secret)}")
+        return payload["result"]
 
     def execute_query(
         self,
@@ -248,53 +373,25 @@ class AuditService:
         cfg = self._get_config()
         conn_str = cfg.build_connection_string()
 
-        odbc = _load_pyodbc()
-        if odbc is None:
-            raise BOEAuditDBError(
-                "pyodbc is not installed or unixODBC library is missing on this host. "
-                "Install unixODBC and pyodbc to query the SAP BusinessObjects Auditing Database."
-            )
-
         capped_max = max(1, min(max_rows, self.MAX_ALLOWED_ROWS))
 
-        try:
-            with odbc.connect(conn_str, readonly=True, timeout=cfg.timeout) as conn:
-                with conn.cursor() as cursor:
-                    if params:
-                        cursor.execute(validated_sql, tuple(params))
-                    else:
-                        cursor.execute(validated_sql)
+        if self.isolated:
+            result = self._run_isolated(cfg, conn_str, validated_sql, params, capped_max)
+        else:
+            odbc = _load_pyodbc()
+            if odbc is None:
+                raise BOEAuditDBError(
+                    "pyodbc is not installed or unixODBC library is missing on this host. "
+                    "Install it with 'uv sync --extra audit' and the unixODBC package."
+                )
+            try:
+                result = run_query(odbc, conn_str, validated_sql, params, capped_max, cfg.timeout)
+            except BOEAuditDBError:
+                raise
+            except Exception as e:
+                raise BOEAuditDBError(f"Auditing Database ODBC query failed: {e}") from e
 
-                    if not cursor.description:
-                        return {
-                            "query": validated_sql,
-                            "columns": [],
-                            "rows_returned": 0,
-                            "is_truncated": False,
-                            "rows": [],
-                        }
-
-                    columns = [col[0] for col in cursor.description]
-                    raw_rows = cursor.fetchmany(capped_max + 1)
-                    is_truncated = len(raw_rows) > capped_max
-                    selected_rows = raw_rows[:capped_max]
-
-                    rows = [
-                        {col: self._serialize_value(val) for col, val in zip(columns, row)} for row in selected_rows
-                    ]
-
-                    return {
-                        "query": validated_sql,
-                        "columns": columns,
-                        "rows_returned": len(rows),
-                        "max_rows": capped_max,
-                        "is_truncated": is_truncated,
-                        "rows": rows,
-                    }
-        except BOEAuditDBError:
-            raise
-        except Exception as e:
-            raise BOEAuditDBError(f"Auditing Database ODBC query failed: {e}") from e
+        return {"query": validated_sql, **result}
 
     # =========================================================================
     # High-Level SAP BO 4.3 Auditing Diagnostic Queries (ADS_* Schema)

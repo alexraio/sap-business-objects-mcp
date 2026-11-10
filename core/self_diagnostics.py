@@ -25,6 +25,8 @@ from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional
 
 import requests
 
+from services.audit_service import build_odbc_env
+
 if TYPE_CHECKING:
     from core.session import SessionManager, UserSession
 
@@ -145,7 +147,7 @@ except Exception:
 emit(stage="drivers", available_odbc_drivers=drivers)
 t = time.perf_counter()
 try:
-    a.AuditService().execute_query("SELECT 1 AS health_check", max_rows=1)
+    a.AuditService(isolated=False).execute_query("SELECT 1 AS health_check", max_rows=1)
     emit(stage="query", connected=True, latency_ms=round((time.perf_counter() - t) * 1000.0, 2))
 except Exception as e:
     emit(stage="query", connected=False, latency_ms=round((time.perf_counter() - t) * 1000.0, 2), error=str(e))
@@ -187,7 +189,7 @@ def probe_audit_database(timeout_seconds: Optional[float] = None) -> Dict[str, A
             text=True,
             timeout=limit,
             cwd=project_root,
-            env=os.environ.copy(),
+            env=build_odbc_env(),
         )
         stdout, stderr, returncode = proc.stdout, proc.stderr, proc.returncode
     except subprocess.TimeoutExpired as e:

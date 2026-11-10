@@ -96,7 +96,7 @@ class TestAuditServiceExecution:
         ]
 
         cfg = AuditDBConfig(dsn="BI4_Audit_DSN", user="dba", password=SecretStr("pwd"))
-        svc = AuditService(config=cfg)
+        svc = AuditService(config=cfg, isolated=False)
         res = svc.execute_query("SELECT Event_ID, Start_Time, Duration_ms FROM ADS_EVENT", max_rows=2)
 
         mock_pyodbc.connect.assert_called_once_with("DSN=BI4_Audit_DSN;UID=dba;PWD=pwd", readonly=True, timeout=20)
@@ -116,7 +116,7 @@ class TestAuditServiceExecution:
         mock_cursor.description = [("Event_ID",), ("Object_Name",), ("Error_Code",)]
         mock_cursor.fetchmany.return_value = [(5001, "Financial_Summary.wid", "IES 10901")]
 
-        svc = AuditService(config=AuditDBConfig(dsn="BI4_Audit_DSN"))
+        svc = AuditService(config=AuditDBConfig(dsn="BI4_Audit_DSN"), isolated=False)
 
         failed = svc.get_failed_events(hours_back=12, event_type_id=1003)
         assert failed["rows_returned"] == 1
@@ -127,3 +127,96 @@ class TestAuditServiceExecution:
 
         activity = svc.get_user_activity(username="alice", hours_back=24)
         assert activity["username_filter"] == "alice"
+
+
+class TestOdbcEnvironment:
+    def test_system_libs_first_sqlanywhere_next_original_last(self, tmp_path, monkeypatch):
+        import services.audit_service as audit
+
+        sys_lib, sa_home = tmp_path / "syslib", tmp_path / "sqlanywhere"
+        (sa_home / "lib64").mkdir(parents=True)
+        sys_lib.mkdir()
+        monkeypatch.setattr(audit.sys, "platform", "linux")
+        monkeypatch.setattr(audit, "SYSTEM_LIB_DIRS", (str(sys_lib),))
+        monkeypatch.setattr(audit, "DEFAULT_SQLANYWHERE_HOMES", (str(sa_home),))
+
+        env = audit.build_odbc_env({"LD_LIBRARY_PATH": "/opt/bo/datadirect/lib:/opt/ibm/db2/lib64"})
+        parts = env["LD_LIBRARY_PATH"].split(":")
+        assert parts == [str(sys_lib), str(sa_home / "lib64"), "/opt/bo/datadirect/lib", "/opt/ibm/db2/lib64"]
+        assert env["SQLANY17"] == str(sa_home)
+
+    def test_existing_sqlany_is_preserved_and_input_not_mutated(self, tmp_path, monkeypatch):
+        import services.audit_service as audit
+
+        monkeypatch.setattr(audit.sys, "platform", "linux")
+        monkeypatch.setattr(audit, "SYSTEM_LIB_DIRS", ())
+        base = {"SQLANY17": str(tmp_path), "LD_LIBRARY_PATH": "/x"}
+        env = audit.build_odbc_env(base)
+        assert env["SQLANY17"] == str(tmp_path)
+        assert base == {"SQLANY17": str(tmp_path), "LD_LIBRARY_PATH": "/x"}
+
+    def test_non_linux_env_is_untouched(self, monkeypatch):
+        import services.audit_service as audit
+
+        monkeypatch.setattr(audit.sys, "platform", "win32")
+        assert audit.build_odbc_env({"A": "1"}) == {"A": "1"}
+
+
+class TestIsolatedExecution:
+    @staticmethod
+    def _svc(monkeypatch, tmp_path, worker_code: str, timeout: int = 5) -> AuditService:
+        import services.audit_service as audit
+
+        worker = tmp_path / "fake_worker.py"
+        worker.write_text(worker_code)
+        monkeypatch.setattr(audit, "WORKER_PATH", worker)
+        cfg = AuditDBConfig(dsn="D", user="dba", password=SecretStr("TopSecret"), timeout=timeout)
+        return AuditService(config=cfg, isolated=True)
+
+    def test_success_roundtrip(self, monkeypatch, tmp_path):
+        code = (
+            "import json,sys\n"
+            "req=json.load(sys.stdin)\n"
+            "assert req['conn_str']=='DSN=D;UID=dba;PWD=TopSecret'\n"
+            "print('driver noise')\n"
+            "print('@@BO_MCP_AUDIT_RESULT@@'+json.dumps({'result':{'columns':['a'],'rows_returned':1,"
+            "'is_truncated':False,'rows':[{'a':1}]}}))\n"
+        )
+        res = self._svc(monkeypatch, tmp_path, code).execute_query("SELECT 1 AS a")
+        assert res["rows"] == [{"a": 1}] and res["query"] == "SELECT 1 AS a"
+
+    def test_native_crash_does_not_kill_caller_and_masks_password(self, monkeypatch, tmp_path):
+        code = "import os,sys\nsys.stderr.write('boom PWD=TopSecret TopSecret\\n')\nsys.stderr.flush()\nos.abort()\n"
+        with pytest.raises(BOEAuditDBError, match="crashed") as exc:
+            self._svc(monkeypatch, tmp_path, code).execute_query("SELECT 1")
+        assert "TopSecret" not in str(exc.value)
+
+    def test_hang_times_out(self, monkeypatch, tmp_path):
+        import services.audit_service as audit
+
+        svc = self._svc(monkeypatch, tmp_path, "import time\ntime.sleep(30)\n", timeout=1)
+        monkeypatch.setattr(audit.subprocess, "run", _run_with_short_timeout(audit.subprocess.run))
+        with pytest.raises(BOEAuditDBError, match="timed out"):
+            svc.execute_query("SELECT 1")
+
+    def test_structured_errors_are_surfaced(self, monkeypatch, tmp_path):
+        code = (
+            "import json\n"
+            "print('@@BO_MCP_AUDIT_RESULT@@'+json.dumps({'error_code':'query_failed','error':'bad PWD=TopSecret'}))\n"
+        )
+        with pytest.raises(BOEAuditDBError, match="query failed") as exc:
+            self._svc(monkeypatch, tmp_path, code).execute_query("SELECT 1")
+        assert "TopSecret" not in str(exc.value)
+
+    def test_pyodbc_missing_is_actionable(self, monkeypatch, tmp_path):
+        code = "import json\nprint('@@BO_MCP_AUDIT_RESULT@@'+json.dumps({'error_code':'pyodbc_missing','error':'x'}))\n"
+        with pytest.raises(BOEAuditDBError, match="uv sync --extra audit"):
+            self._svc(monkeypatch, tmp_path, code).execute_query("SELECT 1")
+
+
+def _run_with_short_timeout(real_run):
+    def wrapper(*args, **kwargs):
+        kwargs["timeout"] = 1
+        return real_run(*args, **kwargs)
+
+    return wrapper
